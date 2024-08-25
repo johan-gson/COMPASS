@@ -79,6 +79,9 @@ int main(int argc, char* argv[]){
         else if (strcmp(argv[i],"--lohcost")==0){ // Penalty for adding loh events in the tree
             parameters.LOH_cost=atof(argv[i+1]);
         }
+        else if (strcmp(argv[i], "--mutNotAtRootPen") == 0) {
+            parameters.mut_notAtRoot_cost = atof(argv[i++ + 1]);
+        }
         else if (strcmp(argv[i],"-o")==0){
             output=argv[i+1];
         }

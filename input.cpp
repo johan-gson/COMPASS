@@ -21,6 +21,21 @@ extern Data data;
 extern Params parameters;
 
 
+inline CellType parse_cell_type(const std::string& str) {
+    if (str == "U") {
+        return CT_U;
+    }
+    else if (str == "N") {
+        return CT_N;
+    }
+    else if (str == "M") {
+        return CT_M;
+    }
+    else {
+        throw std::invalid_argument("Invalid cell type string: " + str);
+    }
+}
+
 void load_CSV(std::string base_name, std::string regionweights_file, bool use_CNA){
     std::ifstream file_variants(base_name+"_variants.csv");
     if(!file_variants.is_open()) throw std::runtime_error("Could not open variants file");
@@ -207,6 +222,51 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     // In case no variant frequencies were provided
     if (data.locus_to_freq.size()==0) data.locus_to_freq = std::vector<double>(n_loci,0.0);
 
+    //read cell metadata
+    std::vector<CellType> cellTypes;
+    std::ifstream file_cellmeta(base_name + "_cell_metadata.csv");
+    if (file_cellmeta) {
+        std::size_t i = 0;
+        std::string line;
+        std::getline(file_cellmeta, line);//skip header
+        while (std::getline(file_cellmeta, line)) {
+            // Skip empty lines
+            if (line.empty()) continue;
+
+            std::istringstream iss(line);
+            std::string cellID, cellTypeStr;
+
+            // Split the line by the comma delimiter
+            if (std::getline(iss, cellID, ',') && std::getline(iss, cellTypeStr, ',')) {
+                try {
+                    // Convert the cell type string to enum
+                    CellType ct = parse_cell_type(cellTypeStr);
+                    // Store the results in the vectors
+                    if (cellID != cell_names[i]) {
+                        throw std::runtime_error(std::string("The cell ids in ") + base_name + "_cell_metadata.csv does not match that of the variant file. They must be in the same order!");
+                    }
+                    cellTypes.push_back(ct);
+                    ++i;
+                }
+                catch (const std::invalid_argument& e) {
+                    std::cerr << e.what() << " Skipping line: " << line << std::endl;
+                    // Optionally, handle the error (e.g., log it) and continue
+                }
+            }
+            else {
+                std::cerr << "Error parsing line: " << line << std::endl;
+                continue; // Skip malformed lines
+            }
+        }
+        file_cellmeta.close();
+        if (cellTypes.size() != cell_names.size()) {
+            throw std::runtime_error(std::string("The cell ids in ") + base_name + "_cell_metadata.csv does not match that of the variant file. The number of cells differ.");
+        }
+    }
+    else {
+        std::cout << "No cell metadata file found - setting all cell types to unknown.";
+        cellTypes = std::vector<CellType>(n_cells, CellType::CT_U);
+    }
     // store by cell
     cells.clear();
     cells.reserve(n_cells);
@@ -230,6 +290,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             }
             cells[j].total_counts=total_count;
         }
+        cells[j].cell_type = cellTypes[j];
     }
     data.predetermined_region_weights.clear();
     if (use_CNA){

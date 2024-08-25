@@ -4,12 +4,19 @@
 #include <map>
 
 
+enum CellType {
+    CT_U = 0, //unknown
+    CT_N = 1, //normal, non-malignant
+    CT_M = 2 //malignant
+};
+
 struct Cell{
     std::vector<int> ref_counts; // number of ref reads for each variable locus
     std::vector<int> alt_counts; // number of alt reads for each variable locus
     std::vector<int> region_counts; // number of reads in each region
     std::vector<int> genotypes;
     std::vector<int> GQ;
+    CellType cell_type;
     std::string name;
     int total_counts; // sum of the read counts in each region
 };
@@ -59,6 +66,8 @@ struct Params{
     double LOH_cost;
     double mut_notAtRoot_cost;
     double mut_notAtRoot_freq_cost;
+    double normal_not_at_root_penalty = 1;
+    double malignant_at_root_penalty = 0.5;
 };
 
 #endif

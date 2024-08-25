@@ -533,6 +533,26 @@ void Tree::compute_prior_score(){
         }
     }
 
+    // Penalize cells depending on cell type:
+    // If they are normal, give a high penalty for being anywhere else except in the root - i.e., a bonus for being in the root
+    // If they are malignant - give a penalty for being in the root. These are usually more uncertain in classification (some could be normal), so penalize a bit less
+    for (int j = 0; j < n_cells; j++) {
+        auto x = std::exp(cells_attach_loglik[j][0]);
+        switch (cells[j].cell_type) {
+        case CellType::CT_N:
+            log_prior_score += std::exp(cells_attach_loglik[j][0]) * parameters.normal_not_at_root_penalty;
+            break;
+        case CellType::CT_M:
+            log_prior_score -= cells_attach_loglik[j][0] * parameters.malignant_at_root_penalty;
+            break;
+        case CellType::CT_U:
+            //do nothing if the cell type is unknown
+            break;
+        }
+    }
+
+
+
     // Higher penalty when there are more cells
     double ncells_coef = 0.2 + 1.0*n_cells/8000.0;
 
