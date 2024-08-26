@@ -70,6 +70,15 @@ class Node {
         int get_n_alt_allele(int locus){return n_alt_allele[locus];}
         std::vector<int> get_mutations() {return mutations;}
         int get_number_mutations() {return mutations.size();}
+        int get_number_non_germline_mutations() {
+            int n = 0;
+            for (std::size_t i = 0; i < mutations.size(); ++i) {
+                if (data.locus_to_variant_type[mutations[i]] != VariantType::VT_GERMLINE) {
+                    ++n;
+                }
+            }
+            return n;
+        }
 
         //  Accessors for CNAs
         int get_cn_region(int region){return cn_regions[region];}

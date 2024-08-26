@@ -32,6 +32,9 @@ Tree::Tree(Scores* cache, bool use_CNA):
     dropout_rates_ref = std::vector<double>(n_loci,0.05);
     dropout_rates_alt = std::vector<double>(n_loci,0.05);
 
+    //if we have normal cells and germline variants, calculate the dropout rates to a better start value.
+
+
     //Generate a random tree
     parents.resize(n_nodes);
     parents[0]=-1; //root
@@ -50,8 +53,21 @@ Tree::Tree(Scores* cache, bool use_CNA):
     }
 
     //randomly assign each somatic mutation to a node and compute the genotypes
+    //if unknown, place it randomly
+    //if germline, place it in root
+    //if somatic, place it randomly except in root
     for (int i=0;i<n_loci;i++){
-        nodes[std::rand()%n_nodes]->add_mutation(i);
+        switch (data.locus_to_variant_type[i]) {
+        case VariantType::VT_UNKNOWN:
+            nodes[std::rand() % n_nodes]->add_mutation(i);
+            break;
+        case VariantType::VT_GERMLINE:
+            nodes[0]->add_mutation(i);
+            break;
+        case VariantType::VT_SOMATIC:
+            nodes[1 + (std::rand() % (n_nodes-1))]->add_mutation(i); //randomize but skip the first
+            break;
+        }
     }
     compute_nodes_genotypes();
 
@@ -524,14 +540,43 @@ void Tree::compute_prior_score(){
         if (nodes[i]->get_number_mutations()==0 && nodes[i]->get_number_effective_LOH(nodes[parents[i]])==0) log_prior_score-=2*(8+n_loci)*parameters.node_cost;
     }
 
-    // Penalize mutations which are not at the root
-    log_prior_score+=nodes[0]->get_number_mutations() * parameters.mut_notAtRoot_cost;
-    // Particularly penalize mutations with a high pop frequency which are not at the root
-    for (int k=1;k<n_nodes;k++){
-        for (int mut : nodes[k]->get_mutations()){
-            if (data.locus_to_freq[mut]>0.0001) log_prior_score-= data.locus_to_freq[mut] *parameters.mut_notAtRoot_freq_cost;
+    //give bonus to germline variants in the root
+    for (int mut : nodes[0]->get_mutations()){
+        switch (data.locus_to_variant_type[mut]) {
+        case VariantType::VT_UNKNOWN:
+            //do nothing, handled below
+            break;
+        case VariantType::VT_GERMLINE:
+            //give bonus to having germline in root
+            log_prior_score += parameters.germline_root_bonus;
+            break;
+        case VariantType::VT_SOMATIC:
+            //do nothing, handled below
+            break;
         }
     }
+
+    //give bonus to mut variants in the root, and penalize unknowns not in root
+    for (int k=1;k<n_nodes;k++){
+        for (int mut : nodes[k]->get_mutations()){
+            switch (data.locus_to_variant_type[mut]) {
+            case VariantType::VT_UNKNOWN:
+                log_prior_score += parameters.mut_notAtRoot_cost; //most unknown variants are at the root, so penalize diverging from that
+                //penalize to put variants with high germline frequency outside the root
+                if (data.locus_to_freq[mut] > 0.0001) log_prior_score -= data.locus_to_freq[mut] * parameters.mut_notAtRoot_freq_cost;
+                break;
+                break;
+            case VariantType::VT_GERMLINE:
+                //do nothing, handled above
+                break;
+            case VariantType::VT_SOMATIC:
+                //give bonus since they are not in root
+                log_prior_score += parameters.somatic_non_root_bonus;
+                break;
+            }
+        }
+    }
+
 
     // Penalize cells depending on cell type:
     // If they are normal, give a high penalty for being anywhere else except in the root - i.e., a bonus for being in the root
@@ -1210,12 +1255,17 @@ void Tree::move_SNV(){
     // sample the source node (from which the event will be moved) among the nodes which have at least one mutation.
     std::vector<int> nodes_with_event{};
     for (int i=0;i<n_nodes;i++){
-        if (nodes[i]->get_number_mutations()>0) nodes_with_event.push_back(i);
+        //look for non-germline SNP
+        for (std::size_t j = 0; j < nodes[i]->get_number_mutations();++j) {
+            if (data.locus_to_variant_type[nodes[i]->get_mutations()[j]] != VariantType::VT_GERMLINE) {
+                nodes_with_event.push_back(i);
+            }
+        }
     }
     int initial_nb_nodes_with_events = nodes_with_event.size();
     int new_nb_nodes_with_events = initial_nb_nodes_with_events;
     int source_node = nodes_with_event[std::rand() % nodes_with_event.size()];
-    hastings_ratio=1.0 * initial_nb_nodes_with_events * nodes[source_node]->get_number_mutations();
+    hastings_ratio=1.0 * initial_nb_nodes_with_events * nodes[source_node]->get_number_non_germline_mutations();
 
     // Select the destination node (either an existing or a new node)
     int destination_node;
@@ -1258,6 +1308,8 @@ void Tree::move_SNV(){
         // To reverse the move, we will need to select add new node, select the right parent for the new destination node, and reassign the children correctly.
         hastings_ratio*= new_node_prob / n_nodes/ std::pow(2,children[source_node].size());
         delete_node(source_node);
+        //need to decrease the destination node index if the source node was before it
+        if (source_node < destination_node) --destination_node;
         new_nb_nodes_with_events--;
     }
     else{
@@ -1279,8 +1331,11 @@ void Tree::split_merge_node(){
         // Select one node which is not the root
         int node1 = std::rand()%(n_nodes-1) + 1;
         int node2 = parents[node1];
+        if ((node1 == 2) && (n_nodes == 3)) {
+            int iii = 10;
+        }
         // Move the events of node 1 into node 2 
-        while (nodes[node1]->get_number_mutations()>0){
+        while (nodes[node1]->get_number_non_germline_mutations()>0){
             nodes[node2]->add_mutation(nodes[node1]->remove_random_mutation());
         }
         while (nodes[node1]->get_number_CNA()>0){
@@ -1289,7 +1344,8 @@ void Tree::split_merge_node(){
         }
 
         delete_node(node1);
-        if ( node1!=n_nodes-1 && node2==n_nodes-1) node2=node1; // the index of node 2 might have changed following the deletion.
+        if (node1 < node2) --node2;
+//        if (node1 != n_nodes - 1 && node2 == n_nodes - 1) node2 = node1; // the index of node 2 might have changed following the deletion.
 
         // Hastings ratio
         // For merge, there is one possibility to merge the events and set the new parents
@@ -1306,7 +1362,7 @@ void Tree::split_merge_node(){
         add_node(node); // The new node is a child of the original node, and the children of the original node are randomly distributed between the 2 nodes.
 
         //Randomly split the events between the two nodes (choosing a random number of events to move)
-        if (nodes[node]->get_number_mutations()>0){
+        if (nodes[node]->get_number_non_germline_mutations()>0){
             int n_events_moved = std::rand()%(nodes[node]->get_number_mutations()+1) ; // we can move from 0 to all of the mutations
             for (int i=0;i<n_events_moved;i++){
                 nodes[n_nodes-1]->add_mutation(nodes[node]->remove_random_mutation());

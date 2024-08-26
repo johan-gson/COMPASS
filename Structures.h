@@ -10,6 +10,12 @@ enum CellType {
     CT_M = 2 //malignant
 };
 
+enum VariantType {
+    VT_UNKNOWN = 0, //unknown
+    VT_GERMLINE = 1, //normal, non-malignant
+    VT_SOMATIC = 2 //malignant
+};
+
 struct Cell{
     std::vector<int> ref_counts; // number of ref reads for each variable locus
     std::vector<int> alt_counts; // number of alt reads for each variable locus
@@ -31,6 +37,7 @@ struct Data{
     std::vector<double> locus_to_freq; // frequency of the variant in the population
     std::vector<std::string> locus_to_name; //name of the variant, which describes the effect on the protein (if any)
     std::vector<int> locus_to_region;
+    std::vector <VariantType> locus_to_variant_type;
     
     std::vector<std::vector<int>> region_to_loci; //list of loci on this amplicon (possibly empty)
     std::vector<std::string> region_to_chromosome;
@@ -66,6 +73,8 @@ struct Params{
     double LOH_cost;
     double mut_notAtRoot_cost;
     double mut_notAtRoot_freq_cost;
+    double germline_root_bonus = 100;
+    double somatic_non_root_bonus = 100;
     double normal_not_at_root_penalty = 1;
     double malignant_at_root_penalty = 0.5;
 };

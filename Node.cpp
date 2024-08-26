@@ -215,9 +215,12 @@ void Node::compute_attachment_scores(bool use_CNA,const std::vector<double>& dro
     
     std::vector<double> temp_scores{};
     for (int i=0; i<n_loci;i++){
-        temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i],n_alt_allele[i],i,dropout_rates_ref[i],dropout_rates_alt[i]);
-        for (int j=0;j<n_cells;j++){
-            attachment_scores_SNV[j]+=temp_scores[j];
+        //ignore germline here
+        temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i], n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
+        if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
+            for (int j = 0; j < n_cells; j++) {
+                attachment_scores_SNV[j] += temp_scores[j];
+            }
         }
     }
     for (int j=0;j<n_cells;j++){
@@ -235,10 +238,14 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
     attachment_scores_SNV = parent->attachment_scores_SNV;
     std::vector<double> temp_scores{};
     for (int i: affected_loci){
-        temp_scores = cache_scores->compute_SNV_loglikelihoods(parent->n_ref_allele[i],parent->n_alt_allele[i],i,dropout_rates_ref[i],dropout_rates_alt[i]);
-        for (int j=0;j<n_cells;j++) attachment_scores_SNV[j]-=temp_scores[j];
-        temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i],n_alt_allele[i],i,dropout_rates_ref[i],dropout_rates_alt[i]);                                                
-        for (int j=0;j<n_cells;j++) attachment_scores_SNV[j]+=temp_scores[j];
+        temp_scores = cache_scores->compute_SNV_loglikelihoods(parent->n_ref_allele[i], parent->n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
+        if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
+            for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] -= temp_scores[j];
+        }
+        temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i], n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
+        if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
+            for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] += temp_scores[j];
+        }
     }
    
     if (use_CNA){
@@ -291,7 +298,14 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
 int Node::remove_random_mutation(){
     // Randomly remove one of the mutations and return it
     // This method should only be called if the node has at least one somatic mutation.
-    int idx = std::rand()%mutations.size();
+    std::vector<int> non_germline_variants;
+    for (std::size_t i = 0; i < mutations.size(); ++i) {
+        if (data.locus_to_variant_type[mutations[i]] != VariantType::VT_GERMLINE) {
+            non_germline_variants.push_back(i);
+        }
+    }
+
+    int idx = non_germline_variants[std::rand()% non_germline_variants.size()];
     int mutation = mutations[idx];
     mutations.erase(mutations.begin()+idx);
     return mutation;

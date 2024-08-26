@@ -36,6 +36,21 @@ inline CellType parse_cell_type(const std::string& str) {
     }
 }
 
+inline VariantType parse_variant_type(const std::string& str) {
+    if (str == "UNKNOWN") {
+        return VT_UNKNOWN;
+    }
+    else if (str == "GERMLINE") {
+        return VT_GERMLINE;
+    }
+    else if (str == "SOMATIC") {
+        return VT_SOMATIC;
+    }
+    else {
+        throw std::invalid_argument("Invalid variant type string: " + str);
+    }
+}
+
 void load_CSV(std::string base_name, std::string regionweights_file, bool use_CNA){
     std::ifstream file_variants(base_name+"_variants.csv");
     if(!file_variants.is_open()) throw std::runtime_error("Could not open variants file");
@@ -104,7 +119,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     std::vector<std::string> columns{};
     while (std::getline(header, val, ',')){
         columns.push_back(val);
-        if (val != "CHR" && val!="POS" && val!="REF" && val!="ALT" && val!="REGION" && val!="NAME" && val!="FREQ"){
+        if (val != "CHR" && val!="POS" && val!="REF" && val!="ALT" && val!="REGION" && val!="NAME" && val!="FREQ" && val != "VARIANT_TYPE") {
             cell_names.push_back(val);
         }
     }
@@ -147,8 +162,11 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             else if (columns[column_count]=="NAME"){
                 data.locus_to_name.push_back(val);
             }
-            else if (columns[column_count]=="FREQ"){
+            else if (columns[column_count] == "FREQ") {
                 data.locus_to_freq.push_back(stod(val));
+            }
+            else if (columns[column_count] == "VARIANT_TYPE") {
+                data.locus_to_variant_type.push_back(parse_variant_type(val));
             }
             else{
                 // for each cell, contains RO:AD:GT (:GT being optional)
