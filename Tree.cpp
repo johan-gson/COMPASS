@@ -1042,49 +1042,49 @@ Tree::Tree(std::string gv_file, bool use_CNA_arg): //Create tree from a graphviz
     file.close();
 }
 
-bool Tree::select_regions(int index){
+bool Tree::select_regions(int index) {
     // Find regions which might contain a non-copy-neutral CNA event. Return true if it was possible to estimate node regions (if the node contains enough cells), false otherwise.
     candidate_regions.clear();
     region_probabilities.resize(n_regions);
-    int root=0;
+    int root = 0;
 
     // Compute number of cells attached to each node and make sure that there is a sufficient number of cells attached to the root
-    std::vector<int> nodes_nbcells(n_cells,0);
-    for (int j=0;j<n_cells;j++){
-        if (best_attachments[j]<n_nodes && best_attachments[j]>=0){
+    std::vector<int> nodes_nbcells(n_nodes, 0);
+    for (int j = 0; j < n_cells; j++) {
+        if (best_attachments[j] < n_nodes && best_attachments[j] >= 0) {
             nodes_nbcells[best_attachments[j]]++;
         }
     }
 
     // Either used predetermined region weights or estimate them using cells attached to the root.
-    if (data.predetermined_region_weights.size()>0){
-        for (int k=0;k<n_regions;k++) region_probabilities[k] = data.predetermined_region_weights[k];
+    if (data.predetermined_region_weights.size() > 0) {
+        for (int k = 0; k < n_regions; k++) region_probabilities[k] = data.predetermined_region_weights[k];
     }
-    else{
-        if (nodes_nbcells[0]<std::max(40.0,0.015*n_cells)){ // not enough cells attached to the root
+    else {
+        if (nodes_nbcells[0] < std::max(40.0, 0.015 * n_cells)) { // not enough cells attached to the root
             // If some nodes have CNLOH, try to use one node without CNLOH in its ancestors as the root.
-            std::vector<bool> CNLOH_in_ancestors(n_nodes,false);
-            bool CNLOH_in_tree=false;
-            int node_newroot=-1;
-            for (int n: DFT_order){
-                if (n>0){
-                    if (nodes[n]->get_number_CNA()>0 || CNLOH_in_ancestors[parents[n]]){
+            std::vector<bool> CNLOH_in_ancestors(n_nodes, false);
+            bool CNLOH_in_tree = false;
+            int node_newroot = -1;
+            for (int n : DFT_order) {
+                if (n > 0) {
+                    if (nodes[n]->get_number_CNA() > 0 || CNLOH_in_ancestors[parents[n]]) {
                         CNLOH_in_ancestors[n] = true;
                         CNLOH_in_tree = true;
                     }
-                    else{
-                        if (nodes_nbcells[n]>=std::max(40.0,0.015*n_cells) && node_newroot==-1){
-                            node_newroot=n;
+                    else {
+                        if (nodes_nbcells[n] >= std::max(40.0, 0.015 * n_cells) && node_newroot == -1) {
+                            node_newroot = n;
                         }
                     }
                 }
             }
-            if (node_newroot==-1 || (!CNLOH_in_tree)){
-                if (index >=0) std::cout<<"Chain "<<std::to_string(index)<<": ";
-                std::cout<<"In the tree inferred without CNAs, there were not enough cells attached to the root ("<<nodes_nbcells[0]<<") to estimate the region weights, so COMPASS could not attempt to find CNAs."<<std::endl;
+            if (node_newroot == -1 || (!CNLOH_in_tree)) {
+                if (index >= 0) std::cout << "Chain " << std::to_string(index) << ": ";
+                std::cout << "In the tree inferred without CNAs, there were not enough cells attached to the root (" << nodes_nbcells[0] << ") to estimate the region weights, so COMPASS could not attempt to find CNAs." << std::endl;
                 return false; // not enough cells attached to the root: cannot find CNAs
             }
-            else{
+            else {
                 root = node_newroot;
             }
         }
@@ -1092,51 +1092,59 @@ bool Tree::select_regions(int index){
     //  Compute average region probability in each node
     std::vector<std::vector<std::vector<double>>> nodes_regionprobs{};
     nodes_regionprobs.resize(n_regions);
-    for (int k=0;k<n_regions;k++){
+    for (int k = 0; k < n_regions; k++) {
         if (!data.region_is_reliable[k]) continue;
-        std::vector<double> nodes_averages(n_nodes,0.0);
+        std::vector<double> nodes_averages(n_nodes, 0.0);
         nodes_regionprobs[k].resize(n_nodes);
-        for (int n=0;n<n_nodes;n++) nodes_regionprobs[k][n].clear();
-        for (int j=0;j<n_cells;j++){
-            if (best_attachments[j]<n_nodes && best_attachments[j]>=0){
-                nodes_regionprobs[k][best_attachments[j]].push_back(1.0*cells[j].region_counts[k] / cells[j].total_counts);
+        for (int n = 0; n < n_nodes; n++) nodes_regionprobs[k][n].clear();
+        for (int j = 0; j < n_cells; j++) {
+            if (best_attachments[j] < n_nodes && best_attachments[j] >= 0) {
+                nodes_regionprobs[k][best_attachments[j]].push_back(1.0 * cells[j].region_counts[k] / cells[j].total_counts);
             }
         }
 
-        if (data.predetermined_region_weights.size()==0){
-            if (nodes_regionprobs[k][root].size()<std::max(40.0,0.015*n_cells)){
-                if (index >=0) std::cout<<"Chain "<<std::to_string(index)<<": ";
-                std::cout<<"In the tree inferred without CNAs, there were not enough cells attached to the root ("<<nodes_nbcells[0]<<") to estimate the region weights, so COMPASS could not attempt to find CNAs.."<<std::endl;
+        if (data.predetermined_region_weights.size() == 0) {
+            if (nodes_regionprobs[k][root].size() < std::max(40.0, 0.015 * n_cells)) {
+                if (index >= 0) std::cout << "Chain " << std::to_string(index) << ": ";
+                std::cout << "In the tree inferred without CNAs, there were not enough cells attached to the root (" << nodes_nbcells[0] << ") to estimate the region weights, so COMPASS could not attempt to find CNAs.." << std::endl;
                 return false; // not enough cells attached to the root: cannot find CNAs
             }
-            double rootprob=0;
-            for (double prob: nodes_regionprobs[k][root]){
-                rootprob+= prob / nodes_regionprobs[k][root].size();
+            double rootprob = 0;
+            for (double prob : nodes_regionprobs[k][root]) {
+                rootprob += prob / nodes_regionprobs[k][root].size();
             }
             region_probabilities[k] = rootprob;
         }
     }
     // Select regions whose probability is different between the root and another node
-    for (int k=0;k<n_regions;k++){
+    for (int k = 0; k < n_regions; k++) {
         if (!data.region_is_reliable[k]) continue;
-        for (int n=1;n<n_nodes;n++){
-            if (n!=root){
-                if (nodes_regionprobs[k][n].size()>=std::max(40.0,0.03*n_cells)){
-                    double prob = 0;
-                    for (double d: nodes_regionprobs[k][n]) prob+= d/nodes_regionprobs[k][n].size();
-                    if ((prob>region_probabilities[k]*1.275 || region_probabilities[k]>prob*1.35) && (region_probabilities[k]>0.05/n_regions || (!parameters.filter_regions))){ 
-                        candidate_regions.push_back(k);
-                        break;
+        //If there is prior information that a region is of interest even though we couldn't see any copy number change in the counts,
+        //still make it a candidate. The germline variants may be more powerful than the region counts in determining CN
+        if (data.region_to_cn_type[k] == CNType::CNT_CNV_DETECTED) {
+            candidate_regions.push_back(k);
+        }
+        else if (data.region_to_cn_type[k] == CNType::CNT_UNKNOWN) { //we skip segments defined as CN NEUTRAL
+            for (int n = 1; n < n_nodes; n++) {
+                if (n != root) {
+                    if (nodes_regionprobs[k][n].size() >= std::max(40.0, 0.03 * n_cells)) {
+                        double prob = 0;
+                        for (double d : nodes_regionprobs[k][n]) prob += d / nodes_regionprobs[k][n].size();
+                        if ((prob > region_probabilities[k] * 1.275 || region_probabilities[k] > prob * 1.35) && (region_probabilities[k] > 0.05 / n_regions || (!parameters.filter_regions))) {
+                            candidate_regions.push_back(k);
+                            break;
+                        }
                     }
                 }
             }
         }
     }
-    if (candidate_regions.size()==0){
-        if (index >=0) std::cout<<"Chain "<<std::to_string(index)<<": ";
-        std::cout<<"In the tree inferred without CNAs, there were no regions whose coverage in one node were different from the root, so COMPASS could not identify any CNAs."<<std::endl;
+    if (candidate_regions.size() == 0) {
+        if (index >= 0) std::cout << "Chain " << std::to_string(index) << ": ";
+        std::cout << "In the tree inferred without CNAs, there were no regions whose coverage in one node were different from the root, so COMPASS could not identify any CNAs." << std::endl;
         return false;
     }
+
 
 
     regions_successor = std::vector<int>(n_regions,-1);
@@ -1363,7 +1371,7 @@ void Tree::split_merge_node(){
 
         //Randomly split the events between the two nodes (choosing a random number of events to move)
         if (nodes[node]->get_number_non_germline_mutations()>0){
-            int n_events_moved = std::rand()%(nodes[node]->get_number_mutations()+1) ; // we can move from 0 to all of the mutations
+            int n_events_moved = std::rand()%(nodes[node]->get_number_non_germline_mutations()+1) ; // we can move from 0 to all of the mutations
             for (int i=0;i<n_events_moved;i++){
                 nodes[n_nodes-1]->add_mutation(nodes[node]->remove_random_mutation());
             }
@@ -1514,7 +1522,7 @@ void Tree::move_CNA(){
     }
     
     int destination_node;
-    if (n_nodes<=1) new_node_prob = 1.0;
+    if (n_nodes<=2) new_node_prob = 1.0; //we never move CNVs to base, so if we only have one other node, we must create a new one
     if (1.0*std::rand()/RAND_MAX<new_node_prob){
         // Move the event to a new node.
         int parent = std::rand()%n_nodes; // Select the parent of the new node
@@ -1524,7 +1532,7 @@ void Tree::move_CNA(){
     }
     else{
         // Move the event to an existing node
-        destination_node = std::rand()%(n_nodes-1);
+        destination_node = std::rand()%(n_nodes-2)+1;//skip base, also leave a gap in the end for the case of sampling the source node
         if (destination_node==source_node) destination_node = n_nodes-1;
         hastings_ratio*= 1.0/(1.0-new_node_prob) * (n_nodes-1);
     }

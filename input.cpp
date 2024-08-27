@@ -51,6 +51,22 @@ inline VariantType parse_variant_type(const std::string& str) {
     }
 }
 
+inline CNType parse_cn_type(const std::string& str) {
+    if (str == "UNKNOWN") {
+        return CNT_UNKNOWN;
+    }
+    else if (str == "COPY_NEUTRAL") {
+        return CNT_COPY_NEUTRAL;
+    }
+    else if (str == "CNV_DETECTED") {
+        return CNT_CNV_DETECTED;
+    }
+    else {
+        throw std::invalid_argument("Invalid region type string: " + str);
+    }
+}
+
+
 void load_CSV(std::string base_name, std::string regionweights_file, bool use_CNA){
     std::ifstream file_variants(base_name+"_variants.csv");
     if(!file_variants.is_open()) throw std::runtime_error("Could not open variants file");
@@ -81,6 +97,9 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
                 data.region_to_chromosome.push_back(std::to_string(region_index));
                 counts.push_back(stoi(val));
             }
+            //second column is prior knowledge - is the region known to be copy neutral, or does it look like there is a CNV?
+            std::getline(ss, val, ',');
+            data.region_to_cn_type.push_back(parse_cn_type(val));
             while (std::getline(ss, val, ',')){
                 counts.push_back(stoi(val));
             }

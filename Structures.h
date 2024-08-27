@@ -16,6 +16,12 @@ enum VariantType {
     VT_SOMATIC = 2 //malignant
 };
 
+enum CNType {
+    CNT_UNKNOWN = 0, //unknown, if we have no WGS data
+    CNT_COPY_NEUTRAL = 1, //for example from WGS data
+    CNT_CNV_DETECTED = 2 //for example from WGS data
+};
+
 struct Cell{
     std::vector<int> ref_counts; // number of ref reads for each variable locus
     std::vector<int> alt_counts; // number of alt reads for each variable locus
@@ -44,6 +50,7 @@ struct Data{
     std::vector<std::string> region_to_name;
     std::vector<bool> region_is_reliable; // true for the amplicons that are used for computing the CNV score.
     std::vector<double> predetermined_region_weights; // probability for a read to fall in each of the regions, when these values are given as input and not inferred (otherwise they will be inferred by using the cells attached at the root)
+    std::vector<CNType> region_to_cn_type;
 };
 
 struct Params{

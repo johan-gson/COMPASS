@@ -11,6 +11,11 @@
 #include "Tree.h"
 #include "Scores.h"
 #include "input.h"
+//For debugging
+//#include <csignal>
+//#include <iostream>
+//#include <execinfo.h>
+//#include <cstdlib>
 
 int n_cells;
 int n_loci;
@@ -18,8 +23,31 @@ int n_regions;
 std::vector<Cell> cells;
 Data data;
 Params parameters;
+/* 
+//For debugging of errors such as floating point errors
+void signalHandler(int signal) {
+    if (signal == SIGFPE) {
+        std::cerr << "Caught a floating point exception (SIGFPE)." << std::endl;
 
+        // Obtain and print the backtrace
+        void* array[10];
+        size_t size = backtrace(array, 10);
+        char** symbols = backtrace_symbols(array, size);
+
+        std::cerr << "Backtrace:" << std::endl;
+        for (size_t i = 0; i < size; i++) {
+            std::cerr << symbols[i] << std::endl;
+        }
+
+        free(symbols);  // Remember to free the allocated memory
+        exit(EXIT_FAILURE);
+    }
+}
+*/
 int main(int argc, char* argv[]){
+    // Register signal handler for SIGFPE
+    //std::signal(SIGFPE, signalHandler); //for debugging
+
     init_params();
     parameters.verbose=false;
     // Read command line arguments
