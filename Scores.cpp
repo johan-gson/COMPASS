@@ -189,7 +189,7 @@ std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region
     if (cache_cnalikelihood_cells.count(hash)) return cache_cnalikelihood_cells[hash];
 
 
-    double theta = parameters.theta;
+    double theta = data.region_to_theta[region]; //parameters.theta;
     std::vector<double> cnv_loglikelihoods{};
     cnv_loglikelihoods.resize(n_cells);
     for (int j=0;j<n_cells;j++){

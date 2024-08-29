@@ -22,12 +22,18 @@ extern std::vector<Cell> cells;
 extern Data data;
 extern Params parameters;
 
-Tree::Tree(Scores* cache, bool use_CNA): 
+Tree::Tree(Scores* cache, bool use_CNA, bool noRandomization):
     hastings_ratio(-1.0),
     use_CNA(use_CNA)
 {
     cache_scores = cache;
-    n_nodes = 3+ (std::rand()%8);
+    if (noRandomization) {
+        n_nodes = 1; //just parent
+    }
+    else {
+        n_nodes = 3 + (std::rand() % 8);
+    }
+    
     dropout_rates = std::vector<double>(n_loci,0.05);
     dropout_rates_ref = std::vector<double>(n_loci,0.05);
     dropout_rates_alt = std::vector<double>(n_loci,0.05);
@@ -38,8 +44,10 @@ Tree::Tree(Scores* cache, bool use_CNA):
     //Generate a random tree
     parents.resize(n_nodes);
     parents[0]=-1; //root
-    for (int i=1;i<n_nodes;i++){
-        parents[i]=std::rand()%i; // new node attached randomly to one of the existing nodes.
+    if (!noRandomization) {
+        for (int i = 1; i < n_nodes; i++) {
+            parents[i] = std::rand() % i; // new node attached randomly to one of the existing nodes.
+        }
     }
     children.resize(n_nodes);
     compute_children();
@@ -56,17 +64,19 @@ Tree::Tree(Scores* cache, bool use_CNA):
     //if unknown, place it randomly
     //if germline, place it in root
     //if somatic, place it randomly except in root
-    for (int i=0;i<n_loci;i++){
-        switch (data.locus_to_variant_type[i]) {
-        case VariantType::VT_UNKNOWN:
-            nodes[std::rand() % n_nodes]->add_mutation(i);
-            break;
-        case VariantType::VT_GERMLINE:
-            nodes[0]->add_mutation(i);
-            break;
-        case VariantType::VT_SOMATIC:
-            nodes[1 + (std::rand() % (n_nodes-1))]->add_mutation(i); //randomize but skip the first
-            break;
+    if (!noRandomization) {
+        for (int i = 0; i < n_loci; i++) {
+            switch (data.locus_to_variant_type[i]) {
+            case VariantType::VT_UNKNOWN:
+                nodes[std::rand() % n_nodes]->add_mutation(i);
+                break;
+            case VariantType::VT_GERMLINE:
+                nodes[0]->add_mutation(i);
+                break;
+            case VariantType::VT_SOMATIC:
+                nodes[1 + (std::rand() % (n_nodes - 1))]->add_mutation(i); //randomize but skip the first
+                break;
+            }
         }
     }
     compute_nodes_genotypes();
@@ -224,8 +234,8 @@ void Tree::compute_nodes_genotypes(){
         for (int child: children[top]) {
             stk.push(child);
         };
-        if (top!=0) nodes[top]->update_genotype(nodes[parents[top]]);
-        else nodes[top]->update_genotype(nullptr);
+        if (top!=0) nodes[top]->update_genotype(nodes[parents[top]], top == 0);
+        else nodes[top]->update_genotype(nullptr, top == 0);
     }
     if (parameters.use_doublets){
         for (Node* doublet: doublets){
@@ -259,7 +269,8 @@ void Tree::compute_attachment_scores(bool use_doublets_local, bool recompute_CNA
         for (int child: children[top]) {
             stk.push(child);
         };
-        if (top==0) // root: compute score from scratch
+        //std::cout << "Node: " << top;
+        if (top == 0) // root: compute score from scratch
             nodes[top]->compute_attachment_scores(use_CNA,dropout_rates_ref,dropout_rates_alt,region_probabilities);
         else // start from the parent score, and only compute the difference on loci/regions affected by events
             nodes[top]->compute_attachment_scores_parent(use_CNA,nodes[parents[top]], dropout_rates_ref,dropout_rates_alt,region_probabilities,recompute_CNA_scores);
@@ -517,18 +528,56 @@ void Tree::EM_step(bool use_doublets_local, bool allow_diff_dropoutrates){
 
 }
 
-bool Tree::rec_check_max_one_event_per_region_per_lineage(int node, std::vector<int> n_events_in_regions){
+bool Tree::rec_check_max_one_event_per_region_per_lineage(int node, std::vector<int> n_events_in_regions) {
     // check that each region is affected, in one lineage, by at most one CNA.
-        for (auto CNA: nodes[node]->get_CNA_events()){
-            n_events_in_regions[std::get<0>(CNA)]+=1;
-            if (n_events_in_regions[std::get<0>(CNA)]>1) return false;
-        }
-        bool valid=true;
-        for (int child: children[node]){
-            valid = valid && rec_check_max_one_event_per_region_per_lineage(child,n_events_in_regions);
-        }
-        return valid;
+    for (auto CNA : nodes[node]->get_CNA_events()) {
+        n_events_in_regions[std::get<0>(CNA)] += 1;
+        if (n_events_in_regions[std::get<0>(CNA)] > 1) return false;
     }
+    bool valid = true;
+    for (int child : children[node]) {
+        valid = valid && rec_check_max_one_event_per_region_per_lineage(child, n_events_in_regions);
+    }
+    return valid;
+}
+
+int Tree::rec_get_number_of_cnloh_removing_somatic_mut(int node, std::vector<int> muts) const {
+    int CNA_events_removing_muts = 0;
+    
+    //add the new non_germline mutations to muts unless we are in root
+    if (node != 0) {
+        //since all germline variants should be in base, we don't check the type - there will not be any in these vectors
+        muts.insert(muts.end(), nodes[node]->get_mutations().begin(), nodes[node]->get_mutations().end());
+    }
+    
+    // check if we have any CNLOH that removes the muts in this node
+    for (auto CNA : nodes[node]->get_CNA_events()) {
+        if (std::get<1>(CNA) == 0) { // check if copy neutral event (CNLOH)
+            const auto& loci = data.region_to_loci[std::get<0>(CNA)];
+            std::vector<int> lociAltLost;
+            for (std::size_t i = 0; i < loci.size(); ++i) {
+                if (data.locus_to_variant_type[loci[i]] != VariantType::VT_GERMLINE) { //this check could be unneccesary, since they exist in root only
+                    if (std::get<2>(CNA)[i] == 1) { //check if alt allele lost
+                        lociAltLost.push_back(loci[i]);
+                    }
+                }
+            }
+            //check for intersection between muts and loci - if any exist, we have a hit
+            if (std::find_first_of(lociAltLost.begin(), lociAltLost.end(),
+                muts.begin(), muts.end()) != lociAltLost.end()) {
+                ++CNA_events_removing_muts;
+            }
+        }
+    }
+
+    //sum up the bad CNLOH from the children
+    for (int child : children[node]) {
+        CNA_events_removing_muts += rec_get_number_of_cnloh_removing_somatic_mut(child, muts);
+    }
+    return CNA_events_removing_muts;
+}
+
+
 
 void Tree::compute_prior_score(){
     // Penalize number of nodes
@@ -585,10 +634,10 @@ void Tree::compute_prior_score(){
         auto x = std::exp(cells_attach_loglik[j][0]);
         switch (cells[j].cell_type) {
         case CellType::CT_N:
-            log_prior_score += std::exp(cells_attach_loglik[j][0]) * parameters.normal_not_at_root_penalty;
+            log_prior_score += cells_attach_prob[j][0] * parameters.normal_not_at_root_penalty; //unclear if this should be logged or tranformed in a different way
             break;
         case CellType::CT_M:
-            log_prior_score -= cells_attach_loglik[j][0] * parameters.malignant_at_root_penalty;
+            log_prior_score -= cells_attach_prob[j][0] * parameters.malignant_at_root_penalty; //unclear if this should be logged or tranformed in a different way
             break;
         case CellType::CT_U:
             //do nothing if the cell type is unknown
@@ -613,6 +662,8 @@ void Tree::compute_prior_score(){
     if (nodes[0]->get_number_CNA_noncopyneutral()>0) log_prior_score-= 100000; 
     // One lineage cannot have more than one CNA affecting each region (but it is still possible to have events affecting the same region in parallel branches)
     if (!rec_check_max_one_event_per_region_per_lineage(0,std::vector<int>(n_regions,0))) log_prior_score-=1000000;
+    //If you have a somatic mutation, it is an unlikely event to have it removed by a CNLOH - the algorthm tends to do this. Penalize this
+    log_prior_score -= rec_get_number_of_cnloh_removing_somatic_mut()* parameters.cnloh_removing_somatic_mut_penalty;
 
 
     // Dropout rates
@@ -971,7 +1022,7 @@ Tree::Tree(std::string gv_file, bool use_CNA_arg): //Create tree from a graphviz
                         idx+=2;
                     }
                     idx--;
-                    nodes[node]->add_CNA(std::make_tuple(region,0,lost_alleles));
+                    nodes[node]->add_CNA(std::make_tuple(region,0,lost_alleles), node == 0);
                 }
                 else if (line[idx]=='L' && line[idx+1]=='o'){ // Loss
                     idx+=5;
@@ -988,7 +1039,7 @@ Tree::Tree(std::string gv_file, bool use_CNA_arg): //Create tree from a graphviz
                         idx+=2;
                     }
                     idx--;
-                    nodes[node]->add_CNA(std::make_tuple(region,-1,alleles));
+                    nodes[node]->add_CNA(std::make_tuple(region,-1,alleles), node == 0);
                 }
                 else if (line[idx]=='G' && line[idx+1]=='a'){ // Gain
                     idx+=5;
@@ -1005,13 +1056,27 @@ Tree::Tree(std::string gv_file, bool use_CNA_arg): //Create tree from a graphviz
                         idx+=2;
                     }
                     idx--;
-                    nodes[node]->add_CNA(std::make_tuple(region,1,alleles));
+                    nodes[node]->add_CNA(std::make_tuple(region,1,alleles), node == 0);
                 }
                 else{ // somatic mutation
                     int idx2= idx+1;
-                    while (line[idx2]!=':') idx2++;
-                    int locus =  stoi(line.substr(idx,idx2-idx));
+                    while (line[idx2] != ':') idx2++;
+                    int locus = atoi(line.substr(idx, idx2 - idx).c_str());
                     nodes[node]->add_mutation(locus);
+                    //std::replace(strLocName.begin(), strLocName.end(), '_', ':'); //a bit risky, if variants contain _
+                    //for some reason, g++ cannot compile the line below, so I replaced it with a loop
+                    //std::size_t locus = std::find(data.locus_to_name.begin(), data.locus_to_name.end(), (std::string)strLocName) - data.locus_to_name.begin();
+                    //if (locus <= data.locus_to_name.size()) {
+                    //    nodes[node]->add_mutation(locus);
+                    //}
+                    //else {
+                    //    throw std::runtime_error("Couldn't read tree");
+                    //}
+                    //for (std::size_t i = 0; i < data.locus_to_name.size(); ++i) {
+                    //    if (data.locus_to_name[i] == strLocName) {
+                    //        nodes[node]->add_mutation(i);
+                    //    }
+                    //}
                 }
                 while (line[idx]!='<') idx++;
 
@@ -1203,7 +1268,7 @@ void Tree::delete_node(int node){
 
 void Tree::prune_reattach(){
     // Prune a subtree, and reattach it somewhere else in the tree
-
+    check_root_cnv();
     if (n_nodes<=1){ // Need at least 2 nodes to be able to prune and reattach.
         hastings_ratio=0.0;
         return;
@@ -1239,9 +1304,11 @@ void Tree::prune_reattach(){
     compute_children(); //update the children list according to the new parent vector
 
     hastings_ratio=1.0;
+    check_root_cnv();
 }
 
 void Tree::swap_node_labels(){
+    check_root_cnv();
     // Select the 2 nodes and copy the nodes below them
     if (n_nodes<=1){
         hastings_ratio=0.0;
@@ -1250,15 +1317,29 @@ void Tree::swap_node_labels(){
     int node1 = std::rand()%n_nodes;
     int node2 = std::rand()%(n_nodes-1);
     if (node2==node1) node2 = n_nodes-1;
+
+    //if node 1 or 2 was the root, move all germline events and CNVs
+    int smallest = std::min(node1, node2);
+    if (smallest == 0) {
+        Node* pSmallest = nodes[smallest];
+        Node* pLargest = nodes[std::max(node1, node2)];
+        pSmallest->move_germline_mutations_and_cnvs(pLargest);
+    }
+
     // Exchange the nodes
     Node* temp = nodes[node1];
     nodes[node1] = nodes[node2];
     nodes[node2] = temp;
 
+    
+    
+
     hastings_ratio=1.0;
+    check_root_cnv();
 }
 
 void Tree::move_SNV(){
+    check_root_cnv();
 
     // sample the source node (from which the event will be moved) among the nodes which have at least one mutation.
     std::vector<int> nodes_with_event{};
@@ -1278,7 +1359,7 @@ void Tree::move_SNV(){
     // Select the destination node (either an existing or a new node)
     int destination_node;
     double new_node_prob=0.2;
-    if (n_nodes<=1) new_node_prob = 1.0;
+    if (n_nodes<=2) new_node_prob = 1.0; //we don't want to move them to root, so we need at least 3 nodes
     if (1.0*std::rand()/RAND_MAX<new_node_prob){
         // Move the event to a new node.
         int parent = std::rand()%n_nodes; // Select the parent of the new node
@@ -1288,9 +1369,9 @@ void Tree::move_SNV(){
     }
     else{
         // Move the event to an existing node
-        destination_node = std::rand()%(n_nodes-1);
+        destination_node = (std::rand()%(n_nodes-2)) + 1; //+1 for skipping root
         if (destination_node==source_node) destination_node = n_nodes-1;
-        hastings_ratio*= 1/(1.0-new_node_prob) * (n_nodes-1);
+        hastings_ratio*= 1/(1.0-new_node_prob) * (n_nodes-2);
         
     }
 
@@ -1328,9 +1409,11 @@ void Tree::move_SNV(){
 
     // To reverse the move, we must select the right source node, the right event in this node
     hastings_ratio*= 1.0/new_nb_nodes_with_events / nodes[destination_node]->get_number_mutations();
+    check_root_cnv();
 }
 
 void Tree::split_merge_node(){
+    check_root_cnv();
     double default_merge_probability = 0.20;
     double merge_probability = default_merge_probability;
     if (n_nodes<=1) merge_probability =0.0; //cannot merge nodes if there is only one node.
@@ -1348,7 +1431,9 @@ void Tree::split_merge_node(){
         }
         while (nodes[node1]->get_number_CNA()>0){
             std::tuple<int,int,std::vector<int>> CNA = nodes[node1]->remove_random_CNA();
-            nodes[node2]->add_CNA(CNA);
+            if (node2 != 0) { //don't move copy number events to root. Instead just let them be deleted.
+                nodes[node2]->add_CNA(CNA, node2 == 0);
+            }
         }
 
         delete_node(node1);
@@ -1380,7 +1465,7 @@ void Tree::split_merge_node(){
             int n_events_moved = std::rand()%(nodes[node]->get_number_CNA()+1) ;
             for (int i=0;i<n_events_moved;i++){
                 std::tuple<int,int,std::vector<int>> CNA = nodes[node]->remove_random_CNA();
-                nodes[n_nodes-1]->add_CNA(CNA);
+                nodes[n_nodes-1]->add_CNA(CNA, n_nodes - 1 == 0);
             }
         }
 
@@ -1393,10 +1478,12 @@ void Tree::split_merge_node(){
         hastings_ratio *= std::pow(2.0,n_events);
         hastings_ratio *= std::pow(2.0,children[node].size()+children[n_nodes-1].size()); 
     }
+    check_root_cnv();
 }
 
 
 void Tree::add_remove_CNA(bool use_CNA){
+    check_root_cnv();
     double default_add_probability=0.70;
     double add_probability = default_add_probability;
     
@@ -1404,8 +1491,17 @@ void Tree::add_remove_CNA(bool use_CNA){
     for (int i=0;i<n_nodes;i++){
         if (nodes[i]->get_number_CNA()>0) nodes_with_events.push_back(i);
     }
-    if (nodes_with_events.size()==0)  add_probability=1.0; //cannot remove a CNA event if none exists
-
+    if (nodes_with_events.size() == 0) {
+        add_probability = 1.0; //cannot remove a CNA event if none exists
+        //if it is not possible to add or remove CMV without messing up the root, we do nothing.
+        if (n_nodes <= 1) {
+            hastings_ratio = 0.0;
+            return;
+        }
+    }
+    else if (n_nodes <= 1) {
+        add_probability = 0.0; //we don't want to add CNVs to the root
+    }
 
     std::vector<int> candidate_regions_CNLOH{};
     for (int k=0;k<n_regions;k++){
@@ -1417,11 +1513,9 @@ void Tree::add_remove_CNA(bool use_CNA){
     }
     
     
-    
-
     if ( (1.0*std::rand())/RAND_MAX <= add_probability){ // add CNA event
         // Select node, type (gain, loss, CNLOH), region and alleles
-        int node = std::rand()%(2*n_nodes); // can add the CNA to an existing node, or to a new node below an existing node
+        int node = (std::rand()%(2*n_nodes-1))+1; // can add the CNA to an existing node, or to a new node below an existing node. And, don't add to the root
         int type=0;
         int n_possible_types = 1;
         if (use_CNA && candidate_regions.size() >0){
@@ -1458,14 +1552,14 @@ void Tree::add_remove_CNA(bool use_CNA){
             if (allele==1 && nodes[parent]->get_n_alt_allele(data.region_to_loci[region][i])==0) allele=0;
             alleles.push_back(allele);
         }
-        nodes[node]->add_CNA(std::make_tuple(region,type,alleles));
-        // There are 2*n_nodes possibilities for where to place the CNA, 1 or 3 possibilities for the type, n_candidate_regions possibilities for the regions,
+        nodes[node]->add_CNA(std::make_tuple(region,type,alleles), node == 0);
+        // There are 2*n_nodes-1 possibilities for where to place the CNA, 1 or 3 possibilities for the type, n_candidate_regions possibilities for the regions,
         // 2**n_alleles possibilities for the alleles and in case a new node was created, 2**(n_children of the parent) possibilities to assign the children of the parent
         // To reverse the move, we need to select remove, select the same node, and select the right CNA event
         int n_nodes_with_events = nodes_with_events.size();
         if (nodes[node]->get_number_CNA()==1) n_nodes_with_events++;
         hastings_ratio *= (1.0-default_add_probability) /n_nodes_with_events  / nodes[node]->get_number_CNA() 
-                            / add_probability * 2*n_nodes * n_candidate_regions * n_possible_types * std::pow(2,alleles.size());
+                            / add_probability * (2*n_nodes-1) * n_candidate_regions * n_possible_types * std::pow(2,alleles.size());
     }
     else{ // remove CNA event
         // Select a node which has a CNA event
@@ -1477,6 +1571,10 @@ void Tree::add_remove_CNA(bool use_CNA){
         int n_candidate_regions= candidate_regions.size();
         if (std::get<1>(CNA)==0) n_candidate_regions = candidate_regions_CNLOH.size();
         hastings_ratio=1.0;
+        //not sure how to deal with this, this line was below before, which clearly doesn't work in the case the node gets deleted
+        //so, at least better this way
+        hastings_ratio *= add_probability / 2.0 / n_nodes / n_candidate_regions / n_possible_types / std::pow(2, n_alleles)
+            / (1.0 - add_probability) * nodes_with_events.size() * (nodes[node]->get_number_CNA() + 1);
         if (node!=0 && nodes[node]->is_empty()){
             // The node is now empty--> delete it.
             // Set the parent of the children of the deleted node.
@@ -1485,13 +1583,13 @@ void Tree::add_remove_CNA(bool use_CNA){
             delete_node(node);
             hastings_ratio = 1.0/std::pow(2,children[parent].size());
         }
-        hastings_ratio *= add_probability / 2.0 / n_nodes / n_candidate_regions / n_possible_types / std::pow(2,n_alleles)
-                            / (1.0-add_probability) * nodes_with_events.size() * (nodes[node]->get_number_CNA()+1);
     }
+    check_root_cnv();
 }
 
 
 void Tree::move_CNA(){
+    check_root_cnv();
     // sample the source node (from which the event will be moved) among the nodes which have at least one CNA event.
     std::vector<int> nodes_with_event{};
     for (int i=0;i<n_nodes;i++){
@@ -1499,7 +1597,7 @@ void Tree::move_CNA(){
     }
     int initial_nb_nodes_with_events = nodes_with_event.size();
     int new_nb_nodes_with_events = initial_nb_nodes_with_events;
-    if (initial_nb_nodes_with_events==0){
+    if (initial_nb_nodes_with_events==0){ 
         hastings_ratio=0.0;
         return;
     }
@@ -1537,14 +1635,16 @@ void Tree::move_CNA(){
         hastings_ratio*= 1.0/(1.0-new_node_prob) * (n_nodes-1);
     }
     // Add the event
-    nodes[destination_node]->add_CNA(CNA);
+    nodes[destination_node]->add_CNA(CNA, destination_node == 0);
     if (nodes[destination_node]->get_number_CNA()==1) new_nb_nodes_with_events++;
 
     // To reverse the move, we must select the right source node, the right event in this node
     hastings_ratio*= 1.0/new_nb_nodes_with_events / nodes[destination_node]->get_number_CNA();
+    check_root_cnv();
 }
 
 void Tree::merge_or_duplicate_CNA(){
+    check_root_cnv();
     // If there are two indentical CNAs in the tree, can merge them into one CNA at their most recent common ancestor
     // If one node containing a CNA has multiple children, can duplicate this CNA and place both copies in parallel branches.
 
@@ -1599,13 +1699,13 @@ void Tree::merge_or_duplicate_CNA(){
         nodes[node1]->remove_CNA(CNA);
         nodes[node2]->remove_CNA(CNA);
         int new_n_nodes_with_CNA_and_multiple_children = nodes_with_CNA_and_multiple_children.size();
-        if (std::rand()%2==0){
+        if ((ancestor == 0) || (std::rand()%2==0)){
             add_node(ancestor);
-            nodes[n_nodes-1]->add_CNA(CNA);
+            nodes[n_nodes-1]->add_CNA(CNA, n_nodes-1 == 0);
             new_n_nodes_with_CNA_and_multiple_children+=1;
         }
         else{
-            nodes[ancestor]->add_CNA(CNA);
+            nodes[ancestor]->add_CNA(CNA, ancestor == 0);
             if (nodes[ancestor]->get_number_CNA()==1) new_n_nodes_with_CNA_and_multiple_children+=1;
         }
 
@@ -1695,8 +1795,8 @@ void Tree::merge_or_duplicate_CNA(){
 
         nodes[node_ancestor]->remove_CNA(CNA);
         if (node_ancestor>0 && nodes[node_ancestor]->is_empty()) delete_node(node_ancestor);
-        nodes[node1]->add_CNA(CNA);
-        nodes[node2]->add_CNA(CNA);
+        nodes[node1]->add_CNA(CNA, node1 == 0);
+        nodes[node2]->add_CNA(CNA, node2 == 0);
 
         int new_n_nodes_with_CNA_and_multiple_children = nodes_with_CNA_and_multiple_children.size();
         if (nodes[node_ancestor]->get_number_CNA()==0) new_n_nodes_with_CNA_and_multiple_children--;
@@ -1717,9 +1817,11 @@ void Tree::merge_or_duplicate_CNA(){
         hastings_ratio*= 1.0 *(duplicate_CNAs.size()+1.0) / (duplicate_CNAs.size()+1 + new_n_nodes_with_CNA_and_multiple_children);
         hastings_ratio*=  1.0 / (duplicate_CNAs.size()+1.0) / std::exp(cache_scores->log_n_choose_k(nodes_containing_CNA.size(),2)) /2.0;
     }
+    check_root_cnv();
 }
 
 void Tree::exchange_Loss_CNLOH(){
+    check_root_cnv();
     std::vector<int> nodes_with_event{};
     for (int n=0;n<n_nodes;n++){
         if (nodes[n]->get_number_LOH()>0) nodes_with_event.push_back(n);
@@ -1729,9 +1831,11 @@ void Tree::exchange_Loss_CNLOH(){
         int node = nodes_with_event[std::rand() % nodes_with_event.size()];
         hastings_ratio = nodes[node]->exchange_Loss_CNLOH(candidate_regions);
     }
+    check_root_cnv();
 }
 
 void Tree::change_alleles_CNA(){
+    check_root_cnv();
     hastings_ratio=1.0;
     std::vector<int> nodes_with_event{};
     for (int n=0;n<n_nodes;n++){
@@ -1742,6 +1846,7 @@ void Tree::change_alleles_CNA(){
         int node = nodes_with_event[std::rand() % nodes_with_event.size()];
         nodes[node]->change_alleles_CNA();
     }
+    check_root_cnv();
 }
 
 double Tree::get_regionprobs_variance(){
@@ -1766,3 +1871,28 @@ double Tree::get_regionprobs_variance(){
     return variance;
 }
 
+
+void Tree::add_node_no_randomization(int parent) {
+    // Add a new node below an existing one, and randomly reassign the children of the parent node.
+    n_nodes++;
+    nodes.push_back(new Node(cache_scores));
+    parents.push_back(parent);
+    node_probabilities.resize(n_nodes);
+    compute_children();
+}
+
+void Tree::init_debug_tree(bool use_CNA_arg) {
+    cells_attach_loglik.resize(n_cells);
+    cells_loglik.resize(n_cells);
+    cells_attach_prob.resize(n_cells);
+    best_attachments.resize(n_cells);
+    use_CNA = false; //not sure why these tricks are needed
+    compute_children();
+    compute_likelihood(true);
+    if (use_CNA_arg && select_regions()) {
+        use_CNA = true;
+        compute_likelihood(true);
+    }
+    compute_prior_score();
+    update_full_score();
+}

@@ -7,6 +7,7 @@
 #include "Node.h"
 #include "Structures.h"
 #include "Scores.h"
+#include <algorithm>
 
 //global variables
 extern int n_cells;
@@ -15,6 +16,9 @@ extern int n_regions;
 extern std::vector<Cell> cells;
 extern Data data;
 extern Params parameters;
+
+//temp debug
+//extern std::vector<std::vector<double>> savedScoresPerCellAndLoci;//temp debug
 
 
 Node::Node(Scores* cache){
@@ -83,7 +87,7 @@ void Node::init_structures(){
 Node::~Node(){
 }
 
-void Node::update_genotype(Node* parent){
+void Node::update_genotype(Node* parent, bool isroot){
 
     // 1. Initialize with the parent genotype.
     if (parent==nullptr){
@@ -153,7 +157,7 @@ void Node::update_genotype(Node* parent){
     }
 
     for (auto CNA: CNAs_to_remove) remove_CNA(CNA);
-    for (auto CNA: CNAs_to_add) add_CNA(CNA);
+    for (auto CNA: CNAs_to_add) add_CNA(CNA,isroot, true);
 
 
 
@@ -168,7 +172,7 @@ void Node::update_genotype(Node* parent){
         if (gain_loss!=0) affected_regions.insert(region);
 
         // Check that the CNA is valid (region ends up with a copy number in {1,2,3} and affected alleles have copy number >0)
-        bool valid_CNA=(cn_regions[region]+gain_loss>=1 & cn_regions[region]+gain_loss<=3);
+        bool valid_CNA=(cn_regions[region]+gain_loss>=1 && cn_regions[region]+gain_loss<=3);
         for (int i=0;i<data.region_to_loci[region].size();i++){
             int locus = data.region_to_loci[region][i];
             if (alleles[i]==0 && n_ref_allele[locus]==0) valid_CNA=false;
@@ -215,13 +219,15 @@ void Node::compute_attachment_scores(bool use_CNA,const std::vector<double>& dro
     
     std::vector<double> temp_scores{};
     for (int i=0; i<n_loci;i++){
-        //ignore germline here
         temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i], n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
-        if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
-            for (int j = 0; j < n_cells; j++) {
-                attachment_scores_SNV[j] += temp_scores[j];
-            }
+        if (i == 4) {
+            //std::cout << "attachmentScoreRoot: " << temp_scores[13] << "\n";
         }
+        //if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
+        for (int j = 0; j < n_cells; j++) {
+            attachment_scores_SNV[j] += temp_scores[j];
+        }
+        //}
     }
     for (int j=0;j<n_cells;j++){
         attachment_scores[j] = attachment_scores_SNV[j];
@@ -239,13 +245,16 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
     std::vector<double> temp_scores{};
     for (int i: affected_loci){
         temp_scores = cache_scores->compute_SNV_loglikelihoods(parent->n_ref_allele[i], parent->n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
-        if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
-            for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] -= temp_scores[j];
+        //savedScoresPerCellAndLoci[i] = temp_scores;
+        if (i == 4) {
+            //std::cout << "attachmentScoreParent: " << temp_scores[13] << "\n";
         }
+        for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] -= temp_scores[j];
         temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i], n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
-        if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
-            for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] += temp_scores[j];
+        if (i == 4) {
+            //std::cout << "attachmentScore: " << temp_scores[13] << "\n";
         }
+        for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] += temp_scores[j];
     }
    
     if (use_CNA){
@@ -264,8 +273,14 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
                     for (int k=0;k<n_regions;k++){
                         if (data.region_is_reliable[k]){
                             temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * parent->cn_regions[k]/ normalization_factor_parent);
+                            if (k == 1) {
+                                //std::cout << "attachmentScoreParentCNA: " << temp_scores[13] << "\n";
+                            }
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]-=temp_scores[j];
                             temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * cn_regions[k]/normalization_factor);
+                            if (k == 1) {
+                                //std::cout << "attachmentScoreCNA: " << temp_scores[13] << "\n";
+                            }
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]+=temp_scores[j];
                         }
                     }
@@ -491,7 +506,9 @@ std::string Node::get_label(){
                 if (data.locus_to_name[i].size()>12 && data.locus_to_name[i].substr(data.locus_to_name[i].size()-12,12)=="splice-donor") nonsyn_mut = true;
                 bool somatic_nonsyn_mut = nonsyn_mut && data.locus_to_freq[i]==0.0;
                 if (somatic_nonsyn_mut) label+="<B>";
-                label+= std::to_string(mut) + ": " + data.locus_to_name[i] +"(chr"+data.locus_to_chromosome[mut]+")";
+                std::string locusNameToExp = data.locus_to_name[i];
+                std::replace(locusNameToExp.begin(), locusNameToExp.end(), ':', '_');
+                label+= std::to_string(mut) + ": " + locusNameToExp +"(chr"+data.locus_to_chromosome[mut]+")";
                 if (somatic_nonsyn_mut) label+="</B>";
                 label+="<br/>";
             }
@@ -556,4 +573,23 @@ std::string Node::get_label_simple(std::set<int> excluded_mutations){
     }
     if (label=="") label = " ";
     return label;
+}
+
+void Node::move_germline_mutations_and_cnvs(Node* pNewRoot) {
+    for (auto it = mutations.begin(); it != mutations.end();) {
+        if (data.locus_to_variant_type[*it] == VariantType::VT_GERMLINE) {
+            pNewRoot->add_mutation(*it);
+            it = mutations.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+
+    //move all CNV away from the current root
+    //a little bit so so, accessing private variables in another object, but should work
+    for (auto& cna : pNewRoot->CNA_events) {
+        add_CNA(cna,false);
+    }
+    pNewRoot->CNA_events.clear();
 }

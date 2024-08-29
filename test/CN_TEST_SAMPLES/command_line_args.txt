@@ -1,0 +1,7 @@
+-i ./CN_1 -o CN_1 --nchains 1 --chainlength 100 --CNA 1 --sex female --mutNotAtRootPen -100 --lohcost 10 --dropoutrate 0.05 --doubletrate 0.01 --regionweights ./CN_1_region_weights.csv
+
+working dir:
+D:\Code\Components\COMPASS\COMPASS\test\CN_TEST_SAMPLES\
+
+-i ./DFCI-5573-RT-01 -o DFCI-5573-RT-01 --nchains 1 --chainlength 100 --CNA 1 --sex female --mutNotAtRootPen -100 --lohcost 10 --dropoutrate 0.05 --doubletrate 0.01 --regionweights ./DFCI-5573-RT-01_region_weights.csv
+C:\Code\Projects\RichterMissionBio\RichterMissionBio\data\WGS_data\DFCI-5573\DFCI-5573-RT-01\compass

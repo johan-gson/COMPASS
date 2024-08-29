@@ -11,6 +11,22 @@
 #include "Structures.h"
 #include "Scores.h"
 #include "input.h"
+#include <cmath>
+
+#ifdef _MSC_VER
+// Different include paths in VS for gsl g++ the way I installed it
+//#include <multimin/gsl_multimin.h>
+//#include <fit/gsl_fit.h>
+//#include <statistics/gsl_statistics.h>
+//#include <statistics/gsl_statistics_double.h>
+//#include <randist/gsl_randist.h>
+#else
+// Different include paths in linux for gsl g++
+//#include <gsl/gsl_cdf.h>
+//#include <gsl/gsl_sf_lngamma.h>
+//#include <gsl_multimin.h>
+#endif
+
 
 //global variables
 extern int n_cells;
@@ -100,6 +116,10 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             //second column is prior knowledge - is the region known to be copy neutral, or does it look like there is a CNV?
             std::getline(ss, val, ',');
             data.region_to_cn_type.push_back(parse_cn_type(val));
+            //third column is theta
+            std::getline(ss, val, ',');
+            data.region_to_theta.push_back(atof(val.c_str()));
+
             while (std::getline(ss, val, ',')){
                 counts.push_back(stoi(val));
             }
@@ -355,6 +375,8 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
         else data.region_is_reliable = std::vector<bool>(n_regions,true);
     }
     else data.region_is_reliable = std::vector<bool>(n_regions,false);
+
+    //fit_region_thetas(); //fit the thetas to the counts from each region - the dispersion varies a lot between regions
 }
 
 
@@ -403,7 +425,7 @@ void init_params(){
     parameters.prior_dropoutrate_mean=0.05; 
     parameters.prior_dropoutrate_omega=100; // concentration parameter for the beta distribution (higher values: force the dropout rates to be close to the prior mean)
 
-	parameters.theta=6.0;
+	//parameters.theta=6.0;
 	parameters.doublet_rate=0.08;
 
     parameters.use_doublets=true;
@@ -418,3 +440,203 @@ void init_params(){
     parameters.mut_notAtRoot_cost=10;
     parameters.mut_notAtRoot_freq_cost=100000; // Penalty for not placing SNVs present in the 1000G database at the root.
 }
+
+/*
+#include <cmath>
+#include <vector>
+
+// Data structure to pass to the minimizer
+struct data {
+    const std::vector<int>* counts;
+    const std::vector<double>* means;
+};
+
+// Log-likelihood function for the Negative Binomial distribution
+double neg_log_likelihood(const gsl_vector* v, void* params) {
+    double theta = gsl_vector_get(v, 0);
+    struct data* d = (struct data*)params;
+    const std::vector<int>& counts = *(d->counts);
+    const std::vector<double>& means = *(d->means);
+
+    double neg_log_likelihood = 0.0;
+    for (std::size_t i = 0; i < counts.size(); ++i) {
+        double mu = means[i];
+        int k = counts[i];
+        neg_log_likelihood -= std::lgamma(k + theta) - std::lgamma(theta) - std::lgamma(k + 1)
+            + theta * std::log(theta / (theta + mu))
+            + k * std::log(mu / (theta + mu));
+    }
+    return neg_log_likelihood;
+}
+
+// Function to fit theta using a minimizer
+double fit_theta_gsl(const std::vector<int>& counts, const std::vector<double>& means) {
+    // Initial guess for theta
+    double theta_initial = 1.0;
+
+    // Set up the GSL minimizer
+    gsl_vector* x = gsl_vector_alloc(1);
+    gsl_vector_set(x, 0, theta_initial);
+
+    gsl_multimin_function minex_func;
+    minex_func.n = 1;
+    minex_func.f = neg_log_likelihood;
+    struct data d = { &counts, &means };
+    minex_func.params = &d;
+
+    // Use the Nelder-Mead simplex algorithm for minimization
+    const gsl_multimin_fminimizer_type* T = gsl_multimin_fminimizer_nmsimplex2;
+    gsl_multimin_fminimizer* s = gsl_multimin_fminimizer_alloc(T, 1);
+    gsl_multimin_fminimizer_set(s, &minex_func, x, gsl_vector_alloc(1));
+
+    // Set the precision and tolerance
+    double tol = 1e-6;
+    int iter = 0;
+    int status;
+
+    do {
+        iter++;
+        status = gsl_multimin_fminimizer_iterate(s);
+
+        if (status) break;
+
+        double size = gsl_multimin_fminimizer_size(s);
+        status = gsl_multimin_test_size(size, tol);
+
+    } while (status == GSL_CONTINUE && iter < 10000);
+
+    double theta = gsl_vector_get(s->x, 0);
+
+    gsl_vector_free(x);
+    gsl_multimin_fminimizer_free(s);
+
+    return theta;
+}
+
+
+
+
+
+// Fit theta parameter for negative binomial using maximum likelihood estimation
+double fit_theta(std::size_t region, const std::vector<std::size_t>& normal_cell_indices, double region_proportion) {
+    double theta = parameters.theta; // initial guess
+    double epsilon = 1e-6; // convergence threshold
+    double step_size = 0.01; // gradient descent step size
+    double best_log_likelihood = -std::numeric_limits<double>::infinity();
+    double last_log_likelihood = -std::numeric_limits<double>::infinity();
+    double best_theta = theta;
+
+    // Iterate to optimize theta
+    for (int iter = 0; iter < 1000; ++iter) {
+        double current_log_likelihood = 0.0;
+
+        // Iterate through each cell
+        for (std::size_t i = 0; i < normal_cell_indices.size(); ++i) {
+            double mu = cells[normal_cell_indices[i]].total_counts * region_proportion;
+            double log_theta = std::log(theta);
+            double log_mu = std::log(mu);
+            double log_theta_mu = std::log(theta + mu);
+            double count = cells[normal_cell_indices[i]].region_counts[region];
+
+            // Log-PMF for negative binomial
+            double log_pmf = std::lgamma(count + theta) - std::lgamma(theta) - std::lgamma(count + 1)
+                + theta * log_theta - (count + theta) * log_theta_mu
+                + count * log_mu - std::lgamma(count + 1);
+
+            current_log_likelihood += log_pmf;
+        }
+
+        if (current_log_likelihood > best_log_likelihood) {
+            double improvement = current_log_likelihood - best_log_likelihood;
+            best_log_likelihood = current_log_likelihood;
+            best_theta = theta;
+            if (improvement < epsilon) {
+                break; //goal reached
+            }
+        }
+        else {
+            //break; // Convergence //we can't stop here
+        }
+
+        // Gradient descent step to update theta
+        if (iter == 0) {
+            theta += step_size * 10; //we move in a random direction since we don't have a gradient - we will get one in the next step
+        }
+        else {
+            theta += step_size * (current_log_likelihood - last_log_likelihood);
+        }
+        last_log_likelihood = current_log_likelihood;
+        
+    }
+
+    return best_theta;
+}
+
+void write_thetas(std::string filename) {
+    std::ofstream of(filename);
+    std::cout << "region\ttheta\n";
+    for (std::size_t i = 0; i < data.region_to_theta.size(); ++i) {
+        std::cout << data.region_to_name[i] << '\t' << data.region_to_theta[i] << '\n';
+    }
+}
+
+void fit_region_thetas() {
+    //init with the standard theta, in case of no/too few normal cells. It works pretty poorly though.
+    data.region_to_theta = std::vector<double>(data.region_to_name.size(), parameters.theta);
+    //get normal cells
+    std::vector<std::size_t> normal_cell_indices;
+    for (std::size_t i = 0; i < cells.size(); ++i) {
+        if (cells[i].cell_type == CellType::CT_N) {
+            normal_cell_indices.push_back(i);
+        }
+    }
+    if (normal_cell_indices.size() < 50) {
+        std::cout << "Too few normal cells to estimate thetas for the counts distributions per region: " << normal_cell_indices.size() <<".\n" <<
+            "At least 50 is required.\n" <<
+            "Using the standard value - this leads to worse performance for inferral of CNA.\n";
+        return;
+    }
+
+    //get region weights
+    std::vector<double> region_proportions;//the fraction of counts that end up in each region, should sum to 1
+    if (data.predetermined_region_weights.size() > 0) {
+        region_proportions = data.predetermined_region_weights;
+    } 
+    else {
+        //calculate it from the normal cells. First get the row sums for all regions
+        std::vector<double> rs(0.0, data.region_to_name.size());
+        double tot_sum = 0.0;
+        for (std::size_t r = 0; r < data.region_to_name.size(); ++r) {
+            for (std::size_t c = 0; c < normal_cell_indices.size(); ++r) {
+                rs[r] += cells[normal_cell_indices[c]].region_counts[r];
+            }
+            tot_sum += rs[r];
+        }
+        region_proportions = rs;
+        for (std::size_t r = 0; r < data.region_to_name.size(); ++r) {
+            region_proportions[r] /= tot_sum;
+        }
+    }
+    
+
+    std::cout << "Fitting thetas...";
+
+    for (std::size_t r = 0; r < data.region_to_theta.size(); ++r) {
+        //What we get here is a vector of counts per cell and the means, i.e., mu,
+        //i.e., the expected counts for that cell given its total counts and region
+        //we calculate the mean as tot_counts*region_proportion
+        std::vector<int> counts(normal_cell_indices.size(),0);
+        std::vector<double> means(normal_cell_indices.size(), 0);
+        for (std::size_t c = 0; c < normal_cell_indices.size(); ++c) {
+            counts[c] = cells[normal_cell_indices[c]].region_counts[r];
+            means[c] = cells[normal_cell_indices[c]].total_counts * region_proportions[r];
+        }
+        
+        data.region_to_theta[r] = fit_theta_gsl(counts, means);
+        
+
+        //data.region_to_theta[r] = fit_theta(r, normal_cell_indices, region_proportions[r]);
+    }
+    std::cout << "done\n";
+}
+*/

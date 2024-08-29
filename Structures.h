@@ -51,6 +51,7 @@ struct Data{
     std::vector<bool> region_is_reliable; // true for the amplicons that are used for computing the CNV score.
     std::vector<double> predetermined_region_weights; // probability for a read to fall in each of the regions, when these values are given as input and not inferred (otherwise they will be inferred by using the cells attached at the root)
     std::vector<CNType> region_to_cn_type;
+    std::vector<double> region_to_theta;
 };
 
 struct Params{
@@ -65,7 +66,7 @@ struct Params{
     double prior_dropoutrate_mean; // beta prior for the dropout rates. the mean is alpha/(alpha+beta)
     double prior_dropoutrate_omega; // beta prior for the dropout rates. the inverse overdispersion parameter omega is alpha+beta
 
-    double theta; // inverse dispersion of the negative binomial for the CNV likelihood
+    //double theta; // inverse dispersion of the negative binomial for the CNV likelihood
 
     double doublet_rate;
     
@@ -80,10 +81,11 @@ struct Params{
     double LOH_cost;
     double mut_notAtRoot_cost;
     double mut_notAtRoot_freq_cost;
-    double germline_root_bonus = 100;
-    double somatic_non_root_bonus = 100;
-    double normal_not_at_root_penalty = 1;
-    double malignant_at_root_penalty = 0.5;
+    double germline_root_bonus = 1000; //this shouldn't really be needed
+    double somatic_non_root_bonus = 1000;
+    double normal_not_at_root_penalty = 1000;
+    double malignant_at_root_penalty = 50;
+    double cnloh_removing_somatic_mut_penalty = 1000;
 };
 
 #endif

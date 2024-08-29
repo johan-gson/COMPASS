@@ -7,9 +7,11 @@
 #include "Scores.h"
 #include "Node.h"
 #include "Structures.h"
+#include <algorithm>
 
 class Tree{
-    private:
+    //private:
+    public: //temp debug
         // Tree structure
         bool use_CNA;
         int n_nodes;
@@ -47,7 +49,7 @@ class Tree{
         double log_likelihood;
         double log_score; //complete score of the tree, including the prior and the likelihood
 
-        Tree(Scores* cache, bool use_CNA); // constructor
+        Tree(Scores* cache, bool use_CNA, bool noRandomization = false); // constructor
         Tree(); // empty constructor
         Tree(const Tree& source); // copy constructor (deep copy)
         Tree(std::string gv_file, bool use_CNA=true); // create tree from graphviz file
@@ -61,6 +63,8 @@ class Tree{
 
         bool is_ancestor(int potential_ancestor, int potential_descendant); 
         bool rec_check_max_one_event_per_region_per_lineage(int node, std::vector<int> n_CNA_in_region);
+        int rec_get_number_of_cnloh_removing_somatic_mut(int node = 0, std::vector<int> muts = std::vector<int>()) const;
+
 
 
         void compute_attachment_scores(bool use_doublets_local,bool recompute_CNA_scores);
@@ -99,7 +103,27 @@ class Tree{
         void change_alleles_CNA();
 
         double get_regionprobs_variance();
-        
+
+        int get_num_nodes() const { return n_nodes; }
+        void check_root_cnv() {
+            if (nodes[0]->get_CNA_events().size() > 0) {
+                std::cout << "Something went wrong!!!\n";
+            }
+            //check that all germline variants are in root
+            const auto& muts = nodes[0]->get_mutations();
+            for (std::size_t i = 0; i < data.locus_to_variant_type.size(); ++i) {
+                if (data.locus_to_variant_type[i] == VariantType::VT_GERMLINE) {
+                    if (std::find(muts.begin(), muts.end(), i) == muts.end()) {
+                        std::cout << "Something went wrong 2!!!\n";
+                    }
+                }
+            }
+        }
+
+        //for debugging
+        Node* get_node(int i) { return nodes[i]; }
+        void add_node_no_randomization(int parent);
+        void init_debug_tree(bool use_CNA_arg);
 };
 
 #endif

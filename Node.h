@@ -43,7 +43,7 @@ class Node {
         ~Node();
 
         // Compute genotype of the node, depending on the genotype of its parent
-        void update_genotype(Node* parent);
+        void update_genotype(Node* parent, bool isroot);
         // compute attachment scores from scratch
         void compute_attachment_scores(bool use_CNA,const std::vector<double>& dropout_rates_ref,
                                         const std::vector<double>& dropout_rates_alt,const std::vector<double>& region_probabilities);
@@ -54,7 +54,12 @@ class Node {
         // MCMC moves for the nodes
         void add_mutation(int locus){mutations.push_back(locus);}
         int remove_random_mutation(); // removes a random mutation, and return the index of the mutation
-        void add_CNA(std::tuple<int,int,std::vector<int>> CNA){CNA_events.insert(CNA);}
+        void add_CNA(std::tuple<int,int,std::vector<int>> CNA, bool isRoot, bool silent = false){
+            CNA_events.insert(CNA);
+            if (isRoot && !silent) {
+                std::cout << "adding CNV to base\n";
+            }
+        }
         std::tuple<int,int,std::vector<int>> remove_random_CNA();
         void remove_CNA(std::tuple<int,int,std::vector<int>> CNA) { CNA_events.erase(CNA); }
         //void remove_CNAs_in_region(int region);
@@ -68,7 +73,7 @@ class Node {
         //  Accessors for Mutations
         int get_n_ref_allele(int locus){return n_ref_allele[locus];}
         int get_n_alt_allele(int locus){return n_alt_allele[locus];}
-        std::vector<int> get_mutations() {return mutations;}
+        const std::vector<int>& get_mutations() {return mutations;}
         int get_number_mutations() {return mutations.size();}
         int get_number_non_germline_mutations() {
             int n = 0;
@@ -79,6 +84,9 @@ class Node {
             }
             return n;
         }
+
+        //Added by Johan
+        void move_germline_mutations_and_cnvs(Node* pNewRoot);
 
         //  Accessors for CNAs
         int get_cn_region(int region){return cn_regions[region];}

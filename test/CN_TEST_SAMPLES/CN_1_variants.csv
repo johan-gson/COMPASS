@@ -1,0 +1,4 @@
+CHR,POS,REF,ALT,REGION,NAME,FREQ,VARIANT_TYPE,M_CELL_1,N_CELL_2
+1,1,C,A,chr1:region_1,chr1:germ_1,1,GERMLINE,58:0:0,26:18:1
+2,1,T,G,chr2:region_2,chr2:germ_2,1,GERMLINE,23:43:1,22:46:1
+3,1,T,G,chr2:region_2,chr2:mut_3,1,SOMATIC,23:43:1,22:1:1
