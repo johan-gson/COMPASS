@@ -163,8 +163,9 @@ int main(int argc, char* argv[]){
     if (burn_in==-1){
         burn_in=chain_length/2;
     }
-
+    std::cout << "Loading data...\n";
     load_CSV(input_file,regionweights_file,use_CNA); 
+    std::cout << "Done...\n";
 
     parameters.omega_het = std::min(parameters.omega_het,betabin_overdisp);
     parameters.omega_het_indel = std::min(parameters.omega_het_indel,betabin_overdisp);

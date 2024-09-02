@@ -92,6 +92,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     data.region_to_chromosome.clear();
     std::string line, val;
     if(use_CNA){
+        std::cout << "Loading regions...\n";
         std::ifstream file_region(base_name+"_regions.csv");
         if (!file_region.is_open()) throw std::runtime_error("Could not open region file");
         int region_index=0;
@@ -134,6 +135,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     }
 
     // Read variants
+    std::cout << "Loading variants...\n";
     data.locus_to_chromosome.clear();
     data.locus_to_position.clear();
     data.locus_to_reference.clear();
@@ -280,6 +282,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     if (data.locus_to_freq.size()==0) data.locus_to_freq = std::vector<double>(n_loci,0.0);
 
     //read cell metadata
+    std::cout << "Loading cell metadata... ";
     std::vector<CellType> cellTypes;
     std::ifstream file_cellmeta(base_name + "_cell_metadata.csv");
     if (file_cellmeta) {
@@ -319,6 +322,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
         if (cellTypes.size() != cell_names.size()) {
             throw std::runtime_error(std::string("The cell ids in ") + base_name + "_cell_metadata.csv does not match that of the variant file. The number of cells differ.");
         }
+        std::cout << "done\n";
     }
     else {
         std::cout << "No cell metadata file found - setting all cell types to unknown.";
@@ -353,6 +357,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     if (use_CNA){
         // Read region weights, if they are given as input
         if (regionweights_file!=""){
+            std::cout << "Loading predetermined region weights...\n";
             data.predetermined_region_weights = std::vector<double>(n_regions,-1);
             std::string line, val;
             std::ifstream file_region(regionweights_file);
@@ -395,7 +400,8 @@ void filter_regions(){
             if (1.0*cells[j].region_counts[k] / cells[j].total_counts <= threshold) count_cells_below_threshold++;
             mean+= 1.0*cells[j].region_counts[k] / cells[j].total_counts / n_cells;
         }
-        bool is_reliable = ((1.0*count_cells_below_threshold/n_cells <= 0.04) && (mean>=0.2/n_regions));
+        //We don't filter out regions that the user has implicitly stated that they want included, but otherwise we do
+        bool is_reliable = (data.region_to_cn_type[k] == CNType::CNT_CNV_DETECTED) || ((1.0*count_cells_below_threshold/n_cells <= 0.04) && (mean>=0.2/n_regions));
         if (data.predetermined_region_weights.size()>k && data.predetermined_region_weights[k]==-1) is_reliable=false;
         data.region_is_reliable.push_back(is_reliable);
         regions_filtered = regions_filtered || ((1.0*count_cells_below_threshold/n_cells > 0.04) || (mean<0.2/n_regions));
