@@ -55,7 +55,21 @@ class Node {
         void add_mutation(int locus){mutations.push_back(locus);}
         int remove_random_mutation(); // removes a random mutation, and return the index of the mutation
         void add_CNA(std::tuple<int,int,std::vector<int>> CNA, bool isRoot, bool silent = false){
-            CNA_events.insert(CNA);
+            //if adding a loss when there already is a loss of the same segment, change to a double loss to keep the tree more readable
+            bool inserted = false;
+            if (std::get<1>(CNA) == -1) {
+                for (auto CNA2 : CNA_events) {
+                    if ((std::get<1>(CNA2) == -1) && (std::get<0>(CNA2) == std::get<0>(CNA2))) {
+                        remove_CNA(CNA2);
+                        add_CNA(std::make_tuple(std::get<0>(CNA2), -2, std::get<2>(CNA2)), isRoot);
+                        inserted = true;
+                        break; //important to break here, the loop is messed up when inserting/removing
+                    }
+                }
+            }
+            if (!inserted) {
+                CNA_events.insert(CNA);
+            }
             if (isRoot && !silent) {
                 std::cout << "adding CNV to base\n";
             }
@@ -66,6 +80,8 @@ class Node {
         double exchange_Loss_CNLOH(std::vector<int> candidate_regions);
         void change_alleles_CNA();
         void change_alleles_CNA_locus(int locus,bool heterozygous);
+        double exchange_Loss_Double_loss(std::vector<int> candidate_regions);
+        
         
         // Various accessors
         bool is_empty(){ return (mutations.size()==0 && CNA_events.size()==0);}
@@ -85,7 +101,6 @@ class Node {
             return n;
         }
 
-        //Added by Johan
         void move_germline_mutations_and_cnvs(Node* pNewRoot);
 
         //  Accessors for CNAs

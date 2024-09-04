@@ -1,6 +1,6 @@
 CXX	= g++
 #CXXFLAGS = -std=c++11 -O2 -g #-I/usr/include  # Include directory for GSL
-CXXFLAGS = -std=c++11 -O2 -I/usr/include/gsl  # Include directory for GSL
+CXXFLAGS = -std=c++11 -O2 #-I/usr/include/gsl  # Include directory for GSL
 LDFLAGS = -L/usr/lib -lgsl -lgslcblas
 
 COMPASS: COMPASS.o Scores.o Node.o Tree.o Inference.o input.o

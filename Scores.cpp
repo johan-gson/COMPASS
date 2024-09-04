@@ -81,7 +81,11 @@ std::vector<double> Scores::compute_SNV_loglikelihoods(int c_ref,int c_alt,int l
     // c_ref and c_alt are the copy numbers of each allele in the genotype
     
     // If homozygous, the copy number of the only allele is irrelevant for the allelic proportion
-    if (c_ref==0) c_alt=1;
+    if ((c_ref == 0) && (c_alt == 0)) { //double loss, we expect a balanced noise, so set equal proportions the same way as wt
+        c_ref = 1;
+        c_alt = 1;
+    }
+    else if (c_ref==0) c_alt=1;
     else if (c_alt==0) c_ref==1;
 
     long int hash = c_ref+ 20*c_alt + 400*locus ;
@@ -97,6 +101,7 @@ std::vector<double> Scores::compute_SNV_loglikelihoods(int c_ref,int c_alt,int l
     dropout_rate_alt = 1.0*discretized_dropout_rate_alt/1000.0;
     std::vector<std::vector<double>> likelihood_alleles_cells{};
     likelihood_alleles_cells.resize((c_ref+1)*(c_alt+1)-1);
+
     std::vector<double> dropoutscores{};
     dropoutscores.resize(n_cells);
     int idx=0;
@@ -184,6 +189,11 @@ std::vector<double> Scores::compute_SNV_loglikelihoods(int c_ref,int c_alt,int l
 std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region_proportion){
     // Compute the likelihood of the read count in the region, based on the negative binomial distribution (Gamma-Poisson)
     // theta is the scale parameter for the Gamma distribution.
+
+    if (region == 18) {
+        int i = 13;
+    }
+
     int discretized_region_proportion = std::round(region_proportion*1000);
     long int hash = region + 500*discretized_region_proportion;
     if (cache_cnalikelihood_cells.count(hash)) return cache_cnalikelihood_cells[hash];

@@ -7,6 +7,8 @@
 #include "Structures.h"
 
 #include <assert.h>
+#include <iomanip>  // Include this header for std::fixed and std::setprecision
+
 
 extern int n_loci;
 extern int n_regions;
@@ -33,7 +35,8 @@ Inference::Inference(std::string name, double temperature, int index):
         1,      // Move CNA
         0.5,    // Merge or duplicate CNA
         1,      // Exchange Loss/CNLOH
-        1     // Change alleles affected by CNA
+        1,     // Change alleles affected by CNA
+        parameters.allow_double_allele_loss ? 0.25 : 0    //Exchange Loss/Double loss
     };
     allow_diff_dropoutrates = true;
 }
@@ -43,7 +46,6 @@ Inference::~Inference(){
 }
 
 Tree Inference::find_best_tree(bool use_CNA, int nb_steps, int burn_in){
-
     //First, find the best tree without CNA.
     if (index>=0) std::cout<<"Chain "<<std::to_string(index)<< ": Starting first phase (finding the best tree without CNA)."<<std::endl;
     else std::cout<<"Starting first phase (finding the best tree without CNA)."<<std::endl;
@@ -71,15 +73,15 @@ Tree Inference::find_best_tree(bool use_CNA, int nb_steps, int burn_in){
     mcmc(true, nb_steps,0);
     if (tree_name!="") best_tree.to_dot(tree_name+".gv",false);
 
-
     return best_tree;
 }
 
 void Inference::mcmc(bool use_CNA, int nb_steps,int burn_in){
-    best_tree = t;
     double best_log_score = -DBL_MAX;
-    int move_id;
-    int n_best_tree=0;
+    int move_id = 0;
+    int n_best_tree = 0;
+    best_tree = t;
+
     for (int step=0;step<nb_steps;step++){
         if (parameters.verbose) std::cout<<"MCMC step " <<step<<"  ----------------------------------------"<<std::endl;
 
@@ -122,10 +124,15 @@ void Inference::mcmc(bool use_CNA, int nb_steps,int burn_in){
                 t_prime.exchange_Loss_CNLOH();
                 break;
             case 8:
-                if (parameters.verbose) std::cout<<"Selected change alleles affected by CNA"<<std::endl;
+                if (parameters.verbose) std::cout << "Selected change alleles affected by CNA" << std::endl;
                 t_prime.change_alleles_CNA();
                 break;
+            case 9:
+                if (parameters.verbose) std::cout << "Selected exchange Loss/Double loss" << std::endl;
+                t_prime.exchange_Loss_Double_loss();
+                break;
         }
+
         double acceptance_ratio = 0.0;
         if (t_prime.hastings_ratio>0.0){
             t_prime.compute_likelihood(allow_diff_dropoutrates && step>burn_in);
@@ -136,7 +143,8 @@ void Inference::mcmc(bool use_CNA, int nb_steps,int burn_in){
         }
         
         double rd = ( (double)std::rand() ) /RAND_MAX;
-        if (parameters.verbose)  std::cout<<"t_prime score: " <<t_prime.log_score<<", t score: " << t.log_score
+        if (parameters.verbose)  std::cout << std::fixed << std::setprecision(2) <<"t_prime score: " <<t_prime.log_score<<", t score: " << t.log_score
+        << " score change: " << t_prime.log_score - t.log_score
         <<", hastings ratio:"<<t_prime.hastings_ratio<< ", acceptance ratio:" << acceptance_ratio<< ",priorT "<<t.log_prior_score<<", priorT' "<<t_prime.log_prior_score<<std::endl;
         
         if (rd<=acceptance_ratio){

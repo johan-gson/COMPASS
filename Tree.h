@@ -62,9 +62,11 @@ class Tree{
         
 
         bool is_ancestor(int potential_ancestor, int potential_descendant); 
-        bool rec_check_max_one_event_per_region_per_lineage(int node, std::vector<int> n_CNA_in_region);
+        double rec_check_max_one_event_per_region_per_lineage(int node = 0, std::vector<std::vector<int>> previousEvents = std::vector<std::vector<int>>());
         int rec_get_number_of_cnloh_removing_somatic_mut(int node = 0, std::vector<int> muts = std::vector<int>()) const;
-
+        std::set<int> rec_get_nodes_in_lineages_with_2_CNA(int region, int node = 0, std::set<int> parents = std::set<int>(), 
+            std::vector<int> previousEvents = std::vector<int>()) const;
+        std::set<int> rec_get_descendents(int node) const;
 
 
         void compute_attachment_scores(bool use_doublets_local,bool recompute_CNA_scores);
@@ -101,20 +103,21 @@ class Tree{
         void merge_or_duplicate_CNA();
         void exchange_Loss_CNLOH();
         void change_alleles_CNA();
+        void exchange_Loss_Double_loss();
 
         double get_regionprobs_variance();
 
         int get_num_nodes() const { return n_nodes; }
         void check_root_cnv() {
             if (nodes[0]->get_CNA_events().size() > 0) {
-                std::cout << "Something went wrong!!!\n";
+                std::cout << "Warning: CNA in the root!!!\n";
             }
             //check that all germline variants are in root
             const auto& muts = nodes[0]->get_mutations();
             for (std::size_t i = 0; i < data.locus_to_variant_type.size(); ++i) {
                 if (data.locus_to_variant_type[i] == VariantType::VT_GERMLINE) {
                     if (std::find(muts.begin(), muts.end(), i) == muts.end()) {
-                        std::cout << "Something went wrong 2!!!\n";
+                        std::cout << "Warning: Germline event not in root!!!\n";
                     }
                 }
             }

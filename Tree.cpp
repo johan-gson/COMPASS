@@ -437,108 +437,130 @@ void Tree::EM_step(bool use_doublets_local, bool allow_diff_dropoutrates){
     std::vector<double> nrefalleles(n_loci,0.0);
     std::vector<double> naltalleles(n_loci,0.0);
 
-    for (int i=0;i<n_loci;i++){
-        std::map<std::pair<int,int>,std::vector<double>> genotypes_prob; // for each cell, probability that it is attached to a node with a given genotype for locus i
+    for (int i = 0; i < n_loci; i++) {
+        std::map<std::pair<int, int>, std::vector<double>> genotypes_prob; // for each cell, probability that it is attached to a node with a given genotype for locus i
         // First, group nodes depending on their genotype at locus i
-        for (int k=0;k<n_nodes;k++){
-            int n_ref=nodes[k]->get_n_ref_allele(i);
-            int n_alt=nodes[k]->get_n_alt_allele(i);
-            std::pair<int,int> p=  std::make_pair(n_ref,n_alt); //p: genotype at locus i for node k
-            if (!genotypes_prob.count(p)){
-                genotypes_prob[p]=std::vector<double>(n_cells,0.0);
+        for (int k = 0; k < n_nodes; k++) {
+            int n_ref = nodes[k]->get_n_ref_allele(i);
+            int n_alt = nodes[k]->get_n_alt_allele(i);
+            std::pair<int, int> p = std::make_pair(n_ref, n_alt); //p: genotype at locus i for node k
+            if (!genotypes_prob.count(p)) {
+                genotypes_prob[p] = std::vector<double>(n_cells, 0.0);
             }
-            for (int j=0;j<n_cells;j++){
-                genotypes_prob[p][j]+=cells_attach_prob[j][k] / (1.0-doublet_rate_local); // do not use doublets for inferring dropout rates (faster)
+            for (int j = 0; j < n_cells; j++) {
+                genotypes_prob[p][j] += cells_attach_prob[j][k] / (1.0 - doublet_rate_local); // do not use doublets for inferring dropout rates (faster)
             }
         }
 
         // Count dropouts for each genotype at locus i
-        for (const auto& m: genotypes_prob){
-            std::pair<int,int> p=m.first;
-            int n_ref=p.first;
-            int n_alt=p.second;
-            if (n_ref>0 && n_alt>0){ // only consider dropouts for heterozygous genotypes. 
-                const std::vector<double>& dropoutsref= cache_scores->get_dropoutref_counts_genotype(n_ref,n_alt,i,dropout_rates_ref[i],
-                                                                                                    dropout_rates_alt[i]);
-                const std::vector<double>& dropoutsalt= cache_scores->get_dropoutalt_counts_genotype(n_ref,n_alt,i,dropout_rates_ref[i],
-                                                                                                    dropout_rates_alt[i]);
-                for (int j=0;j<n_cells;j++){
+        for (const auto& m : genotypes_prob) {
+            std::pair<int, int> p = m.first;
+            int n_ref = p.first;
+            int n_alt = p.second;
+            if (n_ref > 0 && n_alt > 0) { // only consider dropouts for heterozygous genotypes. 
+                const std::vector<double>& dropoutsref = cache_scores->get_dropoutref_counts_genotype(n_ref, n_alt, i, dropout_rates_ref[i],
+                    dropout_rates_alt[i]);
+                const std::vector<double>& dropoutsalt = cache_scores->get_dropoutalt_counts_genotype(n_ref, n_alt, i, dropout_rates_ref[i],
+                    dropout_rates_alt[i]);
+                for (int j = 0; j < n_cells; j++) {
                     // if we have no reads at this position in this cell, we can't tell if a dropout occurred.
-                    if (cells[j].ref_counts[i]+cells[j].alt_counts[i]>4){
-                        dropoutref_counts[i]+=genotypes_prob[p][j] * dropoutsref[j];
-                        dropoutalt_counts[i]+=genotypes_prob[p][j] * dropoutsalt[j];
-                        nrefalleles[i]+=genotypes_prob[p][j] * n_ref; 
-                        naltalleles[i]+=genotypes_prob[p][j] * n_alt; 
+                    if (cells[j].ref_counts[i] + cells[j].alt_counts[i] > 4) {
+                        dropoutref_counts[i] += genotypes_prob[p][j] * dropoutsref[j];
+                        dropoutalt_counts[i] += genotypes_prob[p][j] * dropoutsalt[j];
+                        nrefalleles[i] += genotypes_prob[p][j] * n_ref;
+                        naltalleles[i] += genotypes_prob[p][j] * n_alt;
                     }
                 }
             }
-        }   
+        }
     }
-    
+
 
     //M-step: optimize the node probabilities and dropout rates
-    avg_diff_nodeprob=0.0;
-    for (int k=0;k<n_nodes;k++){ // update node probabilities
+    avg_diff_nodeprob = 0.0;
+    for (int k = 0; k < n_nodes; k++) { // update node probabilities
         double prev = node_probabilities[k];
         node_probabilities[k] = nodes_attachment_counts[k] / n_cells;
-        avg_diff_nodeprob+=std::abs(node_probabilities[k]-prev) / n_nodes;
-    } 
+        avg_diff_nodeprob += std::abs(node_probabilities[k] - prev) / n_nodes;
+    }
 
-    avg_diff_dropoutrates=0.0;
-    for (int i=0;i<n_loci;i++){ // update dropout rates
+    avg_diff_dropoutrates = 0.0;
+    for (int i = 0; i < n_loci; i++) { // update dropout rates
         double prev_ref = dropout_rates_ref[i];
         double prev_alt = dropout_rates_alt[i];
-        dropout_rates[i] = ((parameters.prior_dropoutrate_mean*parameters.prior_dropoutrate_omega-1)*2 + dropoutref_counts[i]+dropoutalt_counts[i]) 
-                                    / ((parameters.prior_dropoutrate_omega-2)*2+nrefalleles[i]+naltalleles[i]);
-        if (allow_diff_dropoutrates){
+        dropout_rates[i] = ((parameters.prior_dropoutrate_mean * parameters.prior_dropoutrate_omega - 1) * 2 + dropoutref_counts[i] + dropoutalt_counts[i])
+            / ((parameters.prior_dropoutrate_omega - 2) * 2 + nrefalleles[i] + naltalleles[i]);
+        if (allow_diff_dropoutrates) {
             // See if likelihood can be improved by allowing 2 different dropout rates
-            dropout_rates_ref[i] = (parameters.prior_dropoutrate_mean*parameters.prior_dropoutrate_omega-1+dropoutref_counts[i]) 
-                                        / (parameters.prior_dropoutrate_omega-2+nrefalleles[i]);
-            dropout_rates_alt[i] = (parameters.prior_dropoutrate_mean*parameters.prior_dropoutrate_omega-1+dropoutalt_counts[i]) 
-                                        / (parameters.prior_dropoutrate_omega-2+naltalleles[i]);
-            double diff_dropoutrates_lik = dropoutref_counts[i] * std::log(dropout_rates_ref[i]) + (nrefalleles[i] - dropoutref_counts[i]) * std::log(1-dropout_rates_ref[i])
-                    + dropoutalt_counts[i] * std::log(dropout_rates_alt[i]) + (naltalleles[i] - dropoutalt_counts[i]) * std::log(1-dropout_rates_alt[i])
-                    +(parameters.prior_dropoutrate_mean * parameters.prior_dropoutrate_omega-1) * (std::log(dropout_rates_ref[i]) + std::log(dropout_rates_alt[i])) 
-                    +((1.0-parameters.prior_dropoutrate_mean) * parameters.prior_dropoutrate_omega-1) * (std::log(1.0-dropout_rates_ref[i]) + std::log(1.0-dropout_rates_alt[i]));
-            double same_dropoutrate_lik = (dropoutref_counts[i]+dropoutalt_counts[i]) * std::log(dropout_rates[i])
-                        + (nrefalleles[i] + naltalleles[i] - dropoutref_counts[i] - dropoutalt_counts[i]) * std::log(1-dropout_rates[i])
-                        + (parameters.prior_dropoutrate_mean * parameters.prior_dropoutrate_omega-1) * 2*std::log(dropout_rates[i])
-                            + ((1.0-parameters.prior_dropoutrate_mean) * parameters.prior_dropoutrate_omega-1) * 2*std::log(1.0-dropout_rates[i]);
-            if (same_dropoutrate_lik>diff_dropoutrates_lik-60){
+            dropout_rates_ref[i] = (parameters.prior_dropoutrate_mean * parameters.prior_dropoutrate_omega - 1 + dropoutref_counts[i])
+                / (parameters.prior_dropoutrate_omega - 2 + nrefalleles[i]);
+            dropout_rates_alt[i] = (parameters.prior_dropoutrate_mean * parameters.prior_dropoutrate_omega - 1 + dropoutalt_counts[i])
+                / (parameters.prior_dropoutrate_omega - 2 + naltalleles[i]);
+            double diff_dropoutrates_lik = dropoutref_counts[i] * std::log(dropout_rates_ref[i]) + (nrefalleles[i] - dropoutref_counts[i]) * std::log(1 - dropout_rates_ref[i])
+                + dropoutalt_counts[i] * std::log(dropout_rates_alt[i]) + (naltalleles[i] - dropoutalt_counts[i]) * std::log(1 - dropout_rates_alt[i])
+                + (parameters.prior_dropoutrate_mean * parameters.prior_dropoutrate_omega - 1) * (std::log(dropout_rates_ref[i]) + std::log(dropout_rates_alt[i]))
+                + ((1.0 - parameters.prior_dropoutrate_mean) * parameters.prior_dropoutrate_omega - 1) * (std::log(1.0 - dropout_rates_ref[i]) + std::log(1.0 - dropout_rates_alt[i]));
+            double same_dropoutrate_lik = (dropoutref_counts[i] + dropoutalt_counts[i]) * std::log(dropout_rates[i])
+                + (nrefalleles[i] + naltalleles[i] - dropoutref_counts[i] - dropoutalt_counts[i]) * std::log(1 - dropout_rates[i])
+                + (parameters.prior_dropoutrate_mean * parameters.prior_dropoutrate_omega - 1) * 2 * std::log(dropout_rates[i])
+                + ((1.0 - parameters.prior_dropoutrate_mean) * parameters.prior_dropoutrate_omega - 1) * 2 * std::log(1.0 - dropout_rates[i]);
+            if (same_dropoutrate_lik > diff_dropoutrates_lik - 60) {
                 dropout_rates_ref[i] = dropout_rates[i];
                 dropout_rates_alt[i] = dropout_rates[i];
             }
-        } 
-        else{
+        }
+        else {
             dropout_rates_ref[i] = dropout_rates[i];
-            dropout_rates_alt[i] = dropout_rates[i]; 
-        }  
+            dropout_rates_alt[i] = dropout_rates[i];
+        }
         // Set minimum and maximum dropout rate
-        if (dropout_rates[i]<0.01) dropout_rates[i]=0.01;
-        if (dropout_rates_ref[i]<0.01) dropout_rates_ref[i]=0.01;
-        if (dropout_rates_alt[i]<0.01) dropout_rates_alt[i]=0.01;
+        if (dropout_rates[i] < 0.01) dropout_rates[i] = 0.01;
+        if (dropout_rates_ref[i] < 0.01) dropout_rates_ref[i] = 0.01;
+        if (dropout_rates_alt[i] < 0.01) dropout_rates_alt[i] = 0.01;
 
-        if (dropout_rates[i]>0.50) dropout_rates[i]=0.50;
-        if (dropout_rates_ref[i]>0.50) dropout_rates_ref[i]=0.50;
-        if (dropout_rates_alt[i]>0.50) dropout_rates_alt[i]=0.50;
-        
-        avg_diff_dropoutrates+= (std::abs(dropout_rates_ref[i] - prev_ref) + std::abs(dropout_rates_alt[i] - prev_alt))  / n_loci;
+        if (dropout_rates[i] > 0.50) dropout_rates[i] = 0.50;
+        if (dropout_rates_ref[i] > 0.50) dropout_rates_ref[i] = 0.50;
+        if (dropout_rates_alt[i] > 0.50) dropout_rates_alt[i] = 0.50;
+
+        avg_diff_dropoutrates += (std::abs(dropout_rates_ref[i] - prev_ref) + std::abs(dropout_rates_alt[i] - prev_alt)) / n_loci;
 
     }
 
 }
 
-bool Tree::rec_check_max_one_event_per_region_per_lineage(int node, std::vector<int> n_events_in_regions) {
+double Tree::rec_check_max_one_event_per_region_per_lineage(int node, std::vector<std::vector<int>> previousEvents) {
     // check that each region is affected, in one lineage, by at most one CNA.
+    // we do however allow for two cases: 
+    // 1) Loss above in the tree followed by a gain, leading to a CNLOH. This is a common scenario in biology.
+    // 2) LOH above followed by a second LOH, resulting in a double loss. This is only allowed 
+    //    if parameters.allow_double_allele_loss is true
+    double penalty = 0;
+    if (node == 0) {
+        previousEvents.resize(data.region_to_name.size());
+    }
+
     for (auto CNA : nodes[node]->get_CNA_events()) {
-        n_events_in_regions[std::get<0>(CNA)] += 1;
-        if (n_events_in_regions[std::get<0>(CNA)] > 1) return false;
+        previousEvents[std::get<0>(CNA)].push_back(std::get<1>(CNA));
+        if (previousEvents[std::get<0>(CNA)].size() > 2) {
+            return 100000;
+        }
+        else if (previousEvents[std::get<0>(CNA)].size() == 2) {
+            if (previousEvents[std::get<0>(CNA)][0] != -1) { //must start with a loss
+                return 100000;
+            }
+            if ((previousEvents[std::get<0>(CNA)][1] == 0) || //CHLOH after loss, not ok
+                ((previousEvents[std::get<0>(CNA)][1] == -1) && !parameters.allow_double_allele_loss)) { //Loss + loss only ok with param set, loss + gain always ok, will automatically be CNLOH
+                return 10000;
+            }
+            //we still penalize these cases a bit
+            penalty += parameters.two_CNA_in_lineage_penalty;
+        }
     }
-    bool valid = true;
+
     for (int child : children[node]) {
-        valid = valid && rec_check_max_one_event_per_region_per_lineage(child, n_events_in_regions);
+        penalty += rec_check_max_one_event_per_region_per_lineage(child, previousEvents);
     }
-    return valid;
+    return penalty;
 }
 
 int Tree::rec_get_number_of_cnloh_removing_somatic_mut(int node, std::vector<int> muts) const {
@@ -576,6 +598,53 @@ int Tree::rec_get_number_of_cnloh_removing_somatic_mut(int node, std::vector<int
     }
     return CNA_events_removing_muts;
 }
+
+std::set<int> Tree::rec_get_nodes_in_lineages_with_2_CNA(int region, int node, std::set<int> parents, std::vector<int> previousEvents) const {
+    // find all nodes participating in a lineage with at least 2 CNA for a certain region
+
+    if (node == 0) {
+        previousEvents.resize(data.region_to_name.size());
+    }
+    std::set<int> results;
+
+    for (auto CNA : nodes[node]->get_CNA_events()) {
+        if (std::get<0>(CNA) == region) {
+            previousEvents.push_back(std::get<1>(CNA));
+            if (previousEvents.size() >= 2) {
+                //we know all children + this node + the parents are in a lineage with 2, so just sum them up
+                results.insert(parents.begin(), parents.end());
+                results.insert(node);
+                auto desc = rec_get_descendents(node);
+                results.insert(desc.begin(), desc.end());
+                return results;
+            }
+        }
+    }
+
+    std::set<int> new_parents(parents);
+    new_parents.insert(node);
+    for (int child : children[node]) {
+        auto desc = rec_get_nodes_in_lineages_with_2_CNA(region, child, new_parents, previousEvents);
+        results.insert(desc.begin(), desc.end());
+    }
+    //if we found anything down the tree, we need to add this node and the parents since they are also of that lineage
+    if (!results.empty()) {
+        results.insert(parents.begin(), parents.end());
+        results.insert(node);
+    }
+    return results;
+}
+
+std::set<int> Tree::rec_get_descendents(int node) const {
+    std::set<int> results;
+    for (int child : children[node]) {
+        results.insert(child);
+        auto desc = rec_get_descendents(child);
+        results.insert(desc.begin(), desc.end());
+    }
+    return results;
+}
+
 
 
 
@@ -661,7 +730,7 @@ void Tree::compute_prior_score(){
     // Cannot have a CNA event at the root.
     if (nodes[0]->get_number_CNA_noncopyneutral()>0) log_prior_score-= 100000; 
     // One lineage cannot have more than one CNA affecting each region (but it is still possible to have events affecting the same region in parallel branches)
-    if (!rec_check_max_one_event_per_region_per_lineage(0,std::vector<int>(n_regions,0))) log_prior_score-=1000000;
+    log_prior_score -= rec_check_max_one_event_per_region_per_lineage();
     //If you have a somatic mutation, it is an unlikely event to have it removed by a CNLOH - the algorthm tends to do this. Penalize this
     log_prior_score -= rec_get_number_of_cnloh_removing_somatic_mut()* parameters.cnloh_removing_somatic_mut_penalty;
 
@@ -865,8 +934,11 @@ void Tree::to_dot(std::string filename, bool simplified){
                     if (std::get<1>(CNA)>0){
                          out_file_json<<"Gain ";
                     }
-                    else if (std::get<1>(CNA)<0){
-                        out_file_json<<"Loss ";
+                    else if (std::get<1>(CNA) == -1) {
+                        out_file_json << "Loss ";
+                    }
+                    else if (std::get<1>(CNA) == -2) {
+                        out_file_json << "Bial. loss ";
                     }
                     else{
                         out_file_json<<"CNLOH ";
@@ -1105,6 +1177,7 @@ Tree::Tree(std::string gv_file, bool use_CNA_arg): //Create tree from a graphviz
 
     // Close the file
     file.close();
+
 }
 
 bool Tree::select_regions(int index) {
@@ -1384,10 +1457,15 @@ void Tree::move_SNV(){
     std::vector<bool> below_mutation(n_nodes,false);
     for (int n: DFT_order){
         if (n==destination_node || (n>0 &&below_mutation[parents[n]]) ) below_mutation[n]=true;
+        //may cause a corruption if change_alleles_CNA_locus changes anything!
+        std::vector<int> mutsToChange;
         for (auto CNA: nodes[n]->get_CNA_events()){
             if (std::get<0>(CNA)==data.locus_to_region[mutation]){
-                nodes[n]->change_alleles_CNA_locus(mutation,below_mutation[n]);
+                mutsToChange.push_back(mutation); //don't change in here, will do insert/erase, may mess up iterators in the loop
             }
+        }
+        for (int mut : mutsToChange) {
+            nodes[n]->change_alleles_CNA_locus(mut, below_mutation[n]);
         }
     }
 
@@ -1794,7 +1872,6 @@ void Tree::merge_or_duplicate_CNA(){
         int node2 = descendants2[std::rand()%descendants2.size()];
 
         nodes[node_ancestor]->remove_CNA(CNA);
-        if (node_ancestor>0 && nodes[node_ancestor]->is_empty()) delete_node(node_ancestor);
         nodes[node1]->add_CNA(CNA, node1 == 0);
         nodes[node2]->add_CNA(CNA, node2 == 0);
 
@@ -1816,6 +1893,9 @@ void Tree::merge_or_duplicate_CNA(){
         //Reverse
         hastings_ratio*= 1.0 *(duplicate_CNAs.size()+1.0) / (duplicate_CNAs.size()+1 + new_n_nodes_with_CNA_and_multiple_children);
         hastings_ratio*=  1.0 / (duplicate_CNAs.size()+1.0) / std::exp(cache_scores->log_n_choose_k(nodes_containing_CNA.size(),2)) /2.0;
+
+        //wait with deleting node to last - will mess up indices otherwise
+        if (node_ancestor > 0 && nodes[node_ancestor]->is_empty()) delete_node(node_ancestor);
     }
     check_root_cnv();
 }
@@ -1845,6 +1925,38 @@ void Tree::change_alleles_CNA(){
     else{
         int node = nodes_with_event[std::rand() % nodes_with_event.size()];
         nodes[node]->change_alleles_CNA();
+    }
+    check_root_cnv();
+}
+
+void Tree::exchange_Loss_Double_loss() {
+    check_root_cnv();
+    std::vector<int> nodes_with_event{};
+    std::vector<std::vector<int>> node_regions{};
+
+
+    //we only allow this if there is an LOH/double and there is not two LOH in any lineage where the node participates
+    //this holds for both flips, since a LOH + double LOH should never happen, heavily penalized in prior
+    for (int n = 0; n < n_nodes; n++) {
+        std::vector<int> ok_CNA_segments;
+        for (auto& CNA: nodes[n]->get_CNA_events()) {
+            if (std::get<1>(CNA) < 0) {
+                std::set<int> forbidden = rec_get_nodes_in_lineages_with_2_CNA(std::get<0>(CNA));
+                if (forbidden.count(n) == 0) {
+                    ok_CNA_segments.push_back(std::get<0>(CNA));
+                    break;
+                }
+            }
+        }
+        if (!ok_CNA_segments.empty()) {
+            nodes_with_event.push_back(n);
+            node_regions.push_back(ok_CNA_segments);
+        }
+    }
+    if (nodes_with_event.size() == 0) hastings_ratio = 0.0;
+    else {
+        int ind = std::rand() % nodes_with_event.size();
+        hastings_ratio = nodes[nodes_with_event[ind]]->exchange_Loss_Double_loss(node_regions[ind]);
     }
     check_root_cnv();
 }

@@ -12,10 +12,12 @@
 #include "Scores.h"
 #include "input.h"
 //For debugging
-//#include <csignal>
-//#include <iostream>
-//#include <execinfo.h>
-//#include <cstdlib>
+#include <csignal>
+#include <iostream>
+#include <cstdlib>
+#ifndef _MSC_VER
+#include <execinfo.h>
+#endif
 
 int n_cells;
 int n_loci;
@@ -23,30 +25,42 @@ int n_regions;
 std::vector<Cell> cells;
 Data data;
 Params parameters;
-/* 
+
+#ifndef _MSC_VER
+
+void printCallstack() {
+    // Obtain and print the backtrace
+    void* array[10];
+    size_t size = backtrace(array, 10);
+    char** symbols = backtrace_symbols(array, size);
+
+    std::cerr << "Backtrace:" << std::endl;
+    for (size_t i = 0; i < size; i++) {
+        std::cerr << symbols[i] << std::endl;
+    }
+
+    free(symbols);  // Remember to free the allocated memory
+
+}
+
 //For debugging of errors such as floating point errors
 void signalHandler(int signal) {
     if (signal == SIGFPE) {
         std::cerr << "Caught a floating point exception (SIGFPE)." << std::endl;
-
-        // Obtain and print the backtrace
-        void* array[10];
-        size_t size = backtrace(array, 10);
-        char** symbols = backtrace_symbols(array, size);
-
-        std::cerr << "Backtrace:" << std::endl;
-        for (size_t i = 0; i < size; i++) {
-            std::cerr << symbols[i] << std::endl;
-        }
-
-        free(symbols);  // Remember to free the allocated memory
+        printCallstack();
         exit(EXIT_FAILURE);
     }
 }
-*/
+
+
+#endif
+
+
 int main(int argc, char* argv[]){
     // Register signal handler for SIGFPE
-    //std::signal(SIGFPE, signalHandler); //for debugging
+    #ifndef _MSC_VER
+    std::signal(SIGFPE, signalHandler); //for debugging
+    #endif
 
     init_params();
     parameters.verbose=false;
@@ -190,26 +204,26 @@ int main(int argc, char* argv[]){
     #pragma omp parallel for
 	for (int i=0;i<n_chains;i++){
 		std::srand(i);
-		Inference infer{"",temperature,i};
-        best_trees[i] = infer.find_best_tree(use_CNA,chain_length,burn_in);
-		results[i]=best_trees[i].log_score;
+        Inference infer{ "",temperature,i };
+        best_trees[i] = infer.find_best_tree(use_CNA, chain_length, burn_in);
+        results[i] = best_trees[i].log_score;
 	}
-    double best_score=-DBL_MAX;
-    int best_score_index=-1;
-	for (int i=0;i<n_chains;i++){
-		if (best_score<results[i]){
-            best_score=results[i];
+    double best_score = -DBL_MAX;
+    int best_score_index = -1;
+    for (int i = 0; i < n_chains; i++) {
+        if (best_score < results[i]) {
+            best_score = results[i];
             best_score_index = i;
         }
-	}
-    if (output_simplified) best_trees[best_score_index].to_dot(output,true);
-    else best_trees[best_score_index].to_dot(output,false);
+    }
+    if (output_simplified) best_trees[best_score_index].to_dot(output, true);
+    else best_trees[best_score_index].to_dot(output, false);
 
     std::string gv_filename(output);
-    if ( output.size()<= 3 || (output.size()>3 && output.substr(output.size()-3)!=".gv")){
-        gv_filename = output + + "_tree.gv";
+    if (output.size() <= 3 || (output.size() > 3 && output.substr(output.size() - 3) != ".gv")) {
+        gv_filename = output + +"_tree.gv";
     }
-    std::cout<<"Completed ! The output was written to "<<output<< ". You can visualize the tree by running: dot -Tpng "<<gv_filename<<" -o output.png"<<std::endl;
+    std::cout << "Completed ! The output was written to " << output << ". You can visualize the tree by running: dot -Tpng " << gv_filename << " -o output.png" << std::endl;
 
-	return 0;
+    return 0;
 }

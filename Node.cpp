@@ -172,11 +172,20 @@ void Node::update_genotype(Node* parent, bool isroot){
         if (gain_loss!=0) affected_regions.insert(region);
 
         // Check that the CNA is valid (region ends up with a copy number in {1,2,3} and affected alleles have copy number >0)
-        bool valid_CNA=(cn_regions[region]+gain_loss>=1 && cn_regions[region]+gain_loss<=3);
-        for (int i=0;i<data.region_to_loci[region].size();i++){
+        // Changed to allow for loss of both alleles, this sometimes happens in cells
+        bool valid_CNA = false;
+        if (parameters.allow_double_allele_loss) {
+            valid_CNA = (cn_regions[region] + gain_loss >= 0 && cn_regions[region] + gain_loss <= 3);
+        }
+        else {
+            valid_CNA = (cn_regions[region] + gain_loss >= 1 && cn_regions[region] + gain_loss <= 3);
+        }
+
+        for (int i = 0; i < data.region_to_loci[region].size(); i++) {
             int locus = data.region_to_loci[region][i];
-            if (alleles[i]==0 && n_ref_allele[locus]==0) valid_CNA=false;
-            if (alleles[i]==1 && n_alt_allele[locus]==0) valid_CNA=false;
+            if (alleles[i] == 0 && n_ref_allele[locus] == 0) valid_CNA = false;
+            if (alleles[i] == 1 && n_alt_allele[locus] == 0) valid_CNA = false;
+            if (gain_loss == -2 && (n_ref_allele[locus] == 0 || n_alt_allele[locus] == 0))  valid_CNA = false;
         }
 
         // Apply the CNA
@@ -185,7 +194,11 @@ void Node::update_genotype(Node* parent, bool isroot){
             for (int i=0;i<data.region_to_loci[region].size();i++){
                 affected_loci.insert(data.region_to_loci[region][i]);
                 int locus = data.region_to_loci[region][i];
-                if (gain_loss!=0){
+                if (gain_loss == -2) { //double loss, the loci 0/1 are not used here, both alleles are reduced
+                    n_ref_allele[locus] -= 1; //we don't really care what they were before, this is a complete loss
+                    n_alt_allele[locus] -= 1; //had some trouble that one of the alleles became -1, which messes everything up. Now it won't.
+                }
+                else if (gain_loss != 0) {
                     if (alleles[i]==0) n_ref_allele[locus]+=gain_loss;
                     else if (alleles[i]==1) n_alt_allele[locus]+=gain_loss;
                 }
@@ -199,10 +212,9 @@ void Node::update_genotype(Node* parent, bool isroot){
                         n_alt_allele[locus]-=1;
                     }
                 }
-                
             }   
         }
-        else{
+        else {
             CNAs_to_remove.push_back(CNA);
         }
     }
@@ -216,18 +228,12 @@ void Node::compute_attachment_scores(bool use_CNA,const std::vector<double>& dro
         attachment_scores_SNV[j]=0.0;
         attachment_scores_CNA[j]=0.0;
     }
-    
     std::vector<double> temp_scores{};
     for (int i=0; i<n_loci;i++){
         temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i], n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
-        if (i == 4) {
-            //std::cout << "attachmentScoreRoot: " << temp_scores[13] << "\n";
-        }
-        //if (data.locus_to_variant_type[i] != VariantType::VT_GERMLINE) {
         for (int j = 0; j < n_cells; j++) {
             attachment_scores_SNV[j] += temp_scores[j];
         }
-        //}
     }
     for (int j=0;j<n_cells;j++){
         attachment_scores[j] = attachment_scores_SNV[j];
@@ -246,17 +252,11 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
     for (int i: affected_loci){
         temp_scores = cache_scores->compute_SNV_loglikelihoods(parent->n_ref_allele[i], parent->n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
         //savedScoresPerCellAndLoci[i] = temp_scores;
-        if (i == 4) {
-            //std::cout << "attachmentScoreParent: " << temp_scores[13] << "\n";
-        }
         for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] -= temp_scores[j];
         temp_scores = cache_scores->compute_SNV_loglikelihoods(n_ref_allele[i], n_alt_allele[i], i, dropout_rates_ref[i], dropout_rates_alt[i]);
-        if (i == 4) {
-            //std::cout << "attachmentScore: " << temp_scores[13] << "\n";
-        }
         for (int j = 0; j < n_cells; j++) attachment_scores_SNV[j] += temp_scores[j];
     }
-   
+
     if (use_CNA){
         if (true){
             if (recompute_CNA_scores){ // Only compute the CNA scores once per tree.
@@ -272,15 +272,10 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
                     }
                     for (int k=0;k<n_regions;k++){
                         if (data.region_is_reliable[k]){
-                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * parent->cn_regions[k]/ normalization_factor_parent);
-                            if (k == 1) {
-                                //std::cout << "attachmentScoreParentCNA: " << temp_scores[13] << "\n";
-                            }
+                            //to support double loss, we never use a cn_regions below 0.05 - it is not possible to calculate the ll for 0, there is some noise, leads to infinity
+                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(parent->cn_regions[k]), parameters.min_exp_cn)/ normalization_factor_parent);
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]-=temp_scores[j];
-                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * cn_regions[k]/normalization_factor);
-                            if (k == 1) {
-                                //std::cout << "attachmentScoreCNA: " << temp_scores[13] << "\n";
-                            }
+                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(cn_regions[k]), parameters.min_exp_cn) /normalization_factor);
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]+=temp_scores[j];
                         }
                     }
@@ -290,9 +285,9 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
         else{
             for (int k: affected_regions){
                 if (data.region_is_reliable[k]){
-                    temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * parent->cn_regions[k]/2.0);
+                    temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(parent->cn_regions[k]), parameters.min_exp_cn)/2.0);
                     for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]-=temp_scores[j];
-                    temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * cn_regions[k]/2.0);
+                    temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(cn_regions[k]), parameters.min_exp_cn) /2.0);
                     for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]+=temp_scores[j];
                 }
             }
@@ -306,7 +301,6 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
             attachment_scores[j] = attachment_scores_SNV[j];
         }
     }
-    
 }
 
 
@@ -425,6 +419,27 @@ void Node::change_alleles_CNA_locus(int locus, bool heterozygous){
     CNA_events.insert(CNA_to_add);
 }
 
+double Node::exchange_Loss_Double_loss(std::vector<int> candidate_regions) {
+    double hastings_ratio = 1.0;
+    int region = candidate_regions[std::rand() % candidate_regions.size()];
+    std::tuple<int, int, std::vector<int>> CNA_to_remove;
+    std::tuple<int, int, std::vector<int>> CNA_to_add;
+
+    for (auto CNA : CNA_events) {
+        if (std::get<0>(CNA) == region) {
+            int newVal = -1;//change from -2
+            if (std::get<1>(CNA) == -1) {
+                int newVal = -2;
+            }
+            std::vector<int> lost_alleles = std::get<2>(CNA);
+            CNA_events.erase(CNA);
+            CNA_events.insert(std::make_tuple(region, newVal, lost_alleles));
+            break; //important to break here, erase and insert messes up loop
+        }
+    }
+
+    return hastings_ratio;
+}
 
 
 
@@ -518,7 +533,8 @@ std::string Node::get_label(){
         int region = std::get<0>(CNA);
         std::string type{};
         if (std::get<1>(CNA)==1) type="Gain";
-        else if (std::get<1>(CNA)==-1) type="Loss";
+        else if (std::get<1>(CNA)==-1) type = "Loss";
+        else if (std::get<1>(CNA)==-2) type = "Bial. loss";
         else type="CNLOH";
         label+= "<B>" + type + " "+std::to_string(region)+":"+ data.region_to_name[region]+ "(chr"+data.region_to_chromosome[region]+ "):";
         std::vector<int> alleles = std::get<2>(CNA);
@@ -559,6 +575,7 @@ std::string Node::get_label_simple(std::set<int> excluded_mutations){
         std::string type{};
         if (std::get<1>(CNA)==1) type="Gain";
         else if (std::get<1>(CNA)==-1) type="Loss";
+        else if (std::get<1>(CNA)==-2) type="Bial. loss";
         else type="CNLOH";
         label+= "<B>" + type + " "+ data.region_to_name[region];
         std::vector<int> alleles = std::get<2>(CNA);
