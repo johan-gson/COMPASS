@@ -67,6 +67,8 @@ class Tree{
         std::set<int> rec_get_nodes_in_lineages_with_2_CNA(int region, int node = 0, std::set<int> parents = std::set<int>(), 
             std::vector<int> previousEvents = std::vector<int>()) const;
         std::set<int> rec_get_descendents(int node) const;
+        std::set<std::tuple<int, int>> rec_get_all_cna_events_in_tree(int node) const;
+        double rec_get_cna_in_multiple_branches_penalty(int node = 0) const;
 
 
         void compute_attachment_scores(bool use_doublets_local,bool recompute_CNA_scores);

@@ -86,6 +86,7 @@ struct Params{
     double normal_not_at_root_penalty = 1000;
     double malignant_at_root_penalty = 50;
     double cnloh_removing_somatic_mut_penalty = 1000;
+    double cna_in_multiple_branches_penalty = 1000;
     double two_CNA_in_lineage_penalty = 100; //we want these to be well supported for them to exist
     bool allow_double_allele_loss = true;
     double min_exp_cn = 0.03; //used for double CN loss

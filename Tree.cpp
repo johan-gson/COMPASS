@@ -645,6 +645,37 @@ std::set<int> Tree::rec_get_descendents(int node) const {
     return results;
 }
 
+std::set<std::tuple<int, int>> Tree::rec_get_all_cna_events_in_tree(int node) const {
+    std::set<std::tuple<int, int>> results;
+    //first add CNAs from this node
+    for (const auto& cna : nodes[node]->get_CNA_events()) {
+        results.insert(std::make_tuple(std::get<0>(cna), std::get<1>(cna)));
+    }
+    //then recursively that from all children 
+    for (int child : children[node]) {
+        auto child_cnv = rec_get_all_cna_events_in_tree(child);
+        results.insert(child_cnv.begin(), child_cnv.end());
+    }
+    return results;
+}
+
+double Tree::rec_get_cna_in_multiple_branches_penalty(int node) const {
+    double penalty = 0.0;
+    //we only look for the same cna in different children, so the CNAs of this node are not involved
+    //we only compare region and type, not the SNPs for the CNV
+    std::set<std::tuple<int, int>> CNAs;
+    for (int child : children[node]) {
+        auto child_CNAs = rec_get_all_cna_events_in_tree(child);
+        for (auto CNA : child_CNAs) {
+            if (CNAs.count(CNA) != 0) {
+                penalty += parameters.cna_in_multiple_branches_penalty;
+            }
+        }
+        CNAs.insert(child_CNAs.begin(), child_CNAs.end());
+    }
+
+    return penalty;
+}
 
 
 
@@ -699,6 +730,7 @@ void Tree::compute_prior_score(){
     // Penalize cells depending on cell type:
     // If they are normal, give a high penalty for being anywhere else except in the root - i.e., a bonus for being in the root
     // If they are malignant - give a penalty for being in the root. These are usually more uncertain in classification (some could be normal), so penalize a bit less
+    
     for (int j = 0; j < n_cells; j++) {
         auto x = std::exp(cells_attach_loglik[j][0]);
         switch (cells[j].cell_type) {
@@ -713,14 +745,14 @@ void Tree::compute_prior_score(){
             break;
         }
     }
-
+    
 
 
     // Higher penalty when there are more cells
     double ncells_coef = 0.2 + 1.0*n_cells/8000.0;
 
     // Penalize CNA events
-    log_prior_score-= ncells_coef* (parameters.LOH_cost+parameters.CNA_cost) /10.0 *  nodes[0]->get_number_CNA();  // Smaller penalty for CNLOH events at the root
+    log_prior_score-= ncells_coef* (parameters.LOH_cost+parameters.CNA_cost) /10.0 *  nodes[0]->get_number_CNA();  // Smaller penalty for CNLOH events at the root - this never happens anymore
     for (int n=1;n<n_nodes;n++){ 
         log_prior_score-= ncells_coef*parameters.CNA_cost * nodes[n]->get_number_disjoint_CNA(regions_successor); 
         // Higher penalty for CNAs resulting in LOH, because they have a bigger impact on the likelihood
@@ -733,6 +765,9 @@ void Tree::compute_prior_score(){
     log_prior_score -= rec_check_max_one_event_per_region_per_lineage();
     //If you have a somatic mutation, it is an unlikely event to have it removed by a CNLOH - the algorthm tends to do this. Penalize this
     log_prior_score -= rec_get_number_of_cnloh_removing_somatic_mut()* parameters.cnloh_removing_somatic_mut_penalty;
+    //An undesired behavior is that CNAs tend to end up in two children instead of in the root, presumably since it is possible to adapt better to noise
+    //We therefore penalize to have the same event in two child branches of the same node. It is still possible, but requires more evidence now.
+    log_prior_score -= rec_get_cna_in_multiple_branches_penalty();
 
 
     // Dropout rates
