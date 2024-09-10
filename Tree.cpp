@@ -1658,11 +1658,47 @@ void Tree::add_remove_CNA(bool use_CNA){
             hastings_ratio = std::pow(2,children[parent].size()); 
         }
         std::vector<int> alleles{};
+        //at a 33% chance, initiate the alleles according to the prior supplied as input by the user.
+        //otherwise just randomize
+        bool bInit = (std::rand() % 3) == 2;
+        double alleleHastings = bInit ? 1.0 / 3.0 : 2.0/3.0;
+
         for (int i=0;i<data.region_to_loci[region].size();i++){
-            int allele =std::rand()%2; //0: CNA affects ref allele; 1: CNA affects alt allele
+            int allele = std::rand() % 2; //0: CNA affects ref allele; 1: CNA affects alt allele
+            alleleHastings = alleleHastings * 2.0;
+            if (bInit) {
+                switch (data.locus_to_cna_allele_prior[data.region_to_loci[region][i]]) {
+                case CNAP_DECREASED:
+                    if (type <= 0) {
+                        //we are adding a loss of some kind. We then assume that a decreased CNV means that the mutation is lost
+                        allele = 1;
+                    }
+                    else {
+                        //this is a gain, we then assume that the ref allele is increased (since AF is decreased)
+                        allele = 0;
+                    }
+                    alleleHastings = alleleHastings / 2;//reduce hastings, no randomization
+                    break;
+                case CNAP_INCREASED:
+                    if (type <= 0) {
+                        //we are adding a loss of some kind. We then assume that an increased CNV means that the reference is lost
+                        allele = 0;
+                    }
+                    else {
+                        //this is a gain, we then assume that the alt allele is increased (since AF is increased)
+                        allele = 1;
+                    }
+                    alleleHastings = alleleHastings / 2;//reduce hastings, no randomization
+                    break;
+                case CNAP_UNKNOWN:
+                    //Do nothing, we use the random value as is, and don't change the hastings ratio
+                    break;
+                }
+            }
+
             // Can only gain/lose lose one allele if we had at least one copy of it !
-            if (allele==0 && nodes[parent]->get_n_ref_allele(data.region_to_loci[region][i])==0) allele=1;
-            if (allele==1 && nodes[parent]->get_n_alt_allele(data.region_to_loci[region][i])==0) allele=0;
+            if (allele == 0 && nodes[parent]->get_n_ref_allele(data.region_to_loci[region][i]) == 0) allele = 1;
+            if (allele == 1 && nodes[parent]->get_n_alt_allele(data.region_to_loci[region][i]) == 0) allele = 0;
             alleles.push_back(allele);
         }
         nodes[node]->add_CNA(std::make_tuple(region,type,alleles), node == 0);
@@ -1671,8 +1707,8 @@ void Tree::add_remove_CNA(bool use_CNA){
         // To reverse the move, we need to select remove, select the same node, and select the right CNA event
         int n_nodes_with_events = nodes_with_events.size();
         if (nodes[node]->get_number_CNA()==1) n_nodes_with_events++;
-        hastings_ratio *= (1.0-default_add_probability) /n_nodes_with_events  / nodes[node]->get_number_CNA() 
-                            / add_probability * (2*n_nodes-1) * n_candidate_regions * n_possible_types * std::pow(2,alleles.size());
+        hastings_ratio *= (1.0 - default_add_probability) / n_nodes_with_events / nodes[node]->get_number_CNA()
+            / add_probability * (2 * n_nodes - 1) * n_candidate_regions * n_possible_types * alleleHastings;// std::pow(2, alleles.size());
     }
     else{ // remove CNA event
         // Select a node which has a CNA event

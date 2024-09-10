@@ -82,6 +82,21 @@ inline CNType parse_cn_type(const std::string& str) {
     }
 }
 
+inline CNAllelePrior parse_cn_allele_prior(const std::string& str) {
+    if (str == "UNKNOWN") {
+        return CNAP_UNKNOWN;
+    }
+    else if (str == "INCREASED") {
+        return CNAP_INCREASED;
+    }
+    else if (str == "DECREASED") {
+        return CNAP_DECREASED;
+    }
+    else {
+        throw std::invalid_argument("Invalid region type string: " + str);
+    }
+}
+
 
 void load_CSV(std::string base_name, std::string regionweights_file, bool use_CNA){
     std::ifstream file_variants(base_name+"_variants.csv");
@@ -160,7 +175,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     std::vector<std::string> columns{};
     while (std::getline(header, val, ',')){
         columns.push_back(val);
-        if (val != "CHR" && val!="POS" && val!="REF" && val!="ALT" && val!="REGION" && val!="NAME" && val!="FREQ" && val != "VARIANT_TYPE") {
+        if (val != "CHR" && val!="POS" && val!="REF" && val!="ALT" && val!="REGION" && val!="NAME" && val!="FREQ" && val != "VARIANT_TYPE" && val != "CNA_ALLELE_PRIOR") {
             cell_names.push_back(val);
         }
     }
@@ -208,6 +223,9 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             }
             else if (columns[column_count] == "VARIANT_TYPE") {
                 data.locus_to_variant_type.push_back(parse_variant_type(val));
+            }
+            else if (columns[column_count] == "CNA_ALLELE_PRIOR") {
+                data.locus_to_cna_allele_prior.push_back(parse_cn_allele_prior(val));
             }
             else{
                 // for each cell, contains RO:AD:GT (:GT being optional)
@@ -260,6 +278,9 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
         for (int k=0;k<n_regions;k++) data.region_to_name.push_back(std::to_string(k));
     }
     
+    if (data.locus_to_cna_allele_prior.size() == 0) {
+        data.locus_to_cna_allele_prior = std::vector<CNAllelePrior>(data.locus_to_name.size(), CNAP_UNKNOWN);
+    }
 
     // In case no mapping from variants to regions were provided
     if (data.locus_to_region.size()==0){

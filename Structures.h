@@ -22,6 +22,12 @@ enum CNType {
     CNT_CNV_DETECTED = 2 //for example from WGS data
 };
 
+enum CNAllelePrior {
+    CNAP_UNKNOWN = 0,
+    CNAP_INCREASED = 1, //This means that the AF is higher in malignant cells, which can be used to initialize the CNA variant vector
+    CNAP_DECREASED = 2 //Like INCREASED, but AF is lower in malignant cells
+};
+
 struct Cell{
     std::vector<int> ref_counts; // number of ref reads for each variable locus
     std::vector<int> alt_counts; // number of alt reads for each variable locus
@@ -44,6 +50,7 @@ struct Data{
     std::vector<std::string> locus_to_name; //name of the variant, which describes the effect on the protein (if any)
     std::vector<int> locus_to_region;
     std::vector <VariantType> locus_to_variant_type;
+    std::vector <CNAllelePrior> locus_to_cna_allele_prior;
     
     std::vector<std::vector<int>> region_to_loci; //list of loci on this amplicon (possibly empty)
     std::vector<std::string> region_to_chromosome;
