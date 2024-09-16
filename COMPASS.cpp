@@ -19,9 +19,10 @@
 #include <execinfo.h>
 #endif
 
-int n_cells;
-int n_loci;
-int n_regions;
+int n_cells = 0;
+int n_loci = 0;
+int n_regions = 0;
+std::size_t n_amplicons = 0;
 std::vector<Cell> cells;
 Data data;
 Params parameters;

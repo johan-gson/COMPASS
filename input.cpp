@@ -32,6 +32,7 @@
 extern int n_cells;
 extern int n_loci;
 extern int n_regions;
+extern std::size_t n_amplicons;
 extern std::vector<Cell> cells;
 extern Data data;
 extern Params parameters;
@@ -103,6 +104,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     if(!file_variants.is_open()) throw std::runtime_error("Could not open variants file");
     // Read region counts (if use CNA)
     std::vector<std::vector<int>> region_counts{};
+    std::vector<std::vector<int>> amplicon_counts{};
     data.region_to_name.clear();
     data.region_to_chromosome.clear();
     std::string line, val;
@@ -144,6 +146,65 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
         }
         n_regions = region_counts.size();
         file_region.close();
+
+
+        std::ifstream file_ampl(base_name + "_amplicons.csv");
+        if (file_ampl.is_open()) {
+            std::cout << "Loading amplicons...\n";
+            data.region_to_amplicons.resize(n_regions);
+            //first get header - we just skip that for now, would be good to check that the cells are in the same order
+            //as in the other files
+            std::getline(file_ampl, line, '\n');
+
+            while (std::getline(file_ampl, line, '\n')) {
+                std::stringstream ss(line);
+                std::getline(ss, val, ',');
+                data.amplicon_to_name.push_back(val);
+                std::vector<int> counts;
+                
+                while (std::getline(ss, val, ',')) {
+                    counts.push_back(stoi(val));
+                }
+                amplicon_counts.push_back(counts);
+            }
+
+            //also read the amplicon meta - if the amplicons file is present, the meta file is mandatory
+            std::ifstream file_meta(base_name + "_amplicon_meta.csv");
+            if (!file_meta.is_open()) throw std::runtime_error("Could not open amplicon meta file");
+            
+            //first get header - we just skip that for now, would be good to check that the cells are in the same order
+            //as in the other files
+            std::getline(file_meta, line, '\n');
+            std::size_t ampl_index = 0;
+            while (std::getline(file_meta, line, '\n')) {
+                std::stringstream ss(line);
+                //region id: we only check the id, no need to store it anywhere
+                std::getline(ss, val, ',');
+                if(data.amplicon_to_name[ampl_index] != val) throw std::runtime_error("Amplicon order differens between counts and meta");
+                std::getline(ss, val, ',');
+                //region: convert region name to region index
+                region_index = std::find(data.region_to_name.begin(), data.region_to_name.end(), val) - data.region_to_name.begin();
+                if (region_index >= n_regions) throw std::runtime_error(std::string("Non-existing region in amplicon meta: " + val));
+                data.amplicon_to_region.push_back(region_index);
+                data.region_to_amplicons[region_index].push_back(ampl_index);
+                //amplicon weight
+                std::getline(ss, val, ',');
+                data.amplicon_weights.push_back(stof(val));
+                //amplicon theta
+                std::getline(ss, val, ',');
+                data.amplicon_to_theta.push_back(stof(val));
+
+                ++ampl_index;
+            }
+
+            file_meta.close();
+        }
+        else {
+            std::cout << "No amplicons file found, skipping amplicons.\n";
+        }
+        n_amplicons = data.amplicon_to_name.size();
+        file_ampl.close();
+
     }
     else{
         n_regions=0;
@@ -371,6 +432,10 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
                 total_count+=region_counts[i][j];
             }
             cells[j].total_counts=total_count;
+            for (int i = 0; i < n_amplicons; i++) {
+                cells[j].amplicon_counts.push_back(amplicon_counts[i][j]);
+            }
+
         }
         cells[j].cell_type = cellTypes[j];
     }

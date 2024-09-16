@@ -32,6 +32,7 @@ struct Cell{
     std::vector<int> ref_counts; // number of ref reads for each variable locus
     std::vector<int> alt_counts; // number of alt reads for each variable locus
     std::vector<int> region_counts; // number of reads in each region
+    std::vector<int> amplicon_counts; //number of reads in each amplicon
     std::vector<int> genotypes;
     std::vector<int> GQ;
     CellType cell_type;
@@ -59,6 +60,11 @@ struct Data{
     std::vector<double> predetermined_region_weights; // probability for a read to fall in each of the regions, when these values are given as input and not inferred (otherwise they will be inferred by using the cells attached at the root)
     std::vector<CNType> region_to_cn_type;
     std::vector<double> region_to_theta;
+    std::vector<std::string> amplicon_to_name;
+    std::vector<double> amplicon_to_theta;
+    std::vector<double> amplicon_weights;
+    std::vector<int> amplicon_to_region;
+    std::vector<std::vector<std::size_t>> region_to_amplicons;
 };
 
 struct Params{

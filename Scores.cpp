@@ -14,6 +14,7 @@
 extern int n_loci;
 extern int n_cells;
 extern int n_regions;
+extern size_t n_amplicons;
 
 extern std::vector<Cell> cells;
 extern Data data;
@@ -186,26 +187,44 @@ std::vector<double> Scores::compute_SNV_loglikelihoods(int c_ref,int c_alt,int l
     return scores_cells;
 }
 
-std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region_proportion){
+std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region_probability, double exp_cn, double normalization_factor){
+    double region_proportion = region_probability * exp_cn / normalization_factor;
+    
     // Compute the likelihood of the read count in the region, based on the negative binomial distribution (Gamma-Poisson)
     // theta is the scale parameter for the Gamma distribution.
-
-    if (region == 18) {
-        int i = 13;
-    }
 
     int discretized_region_proportion = std::round(region_proportion*1000);
     long int hash = region + 500*discretized_region_proportion;
     if (cache_cnalikelihood_cells.count(hash)) return cache_cnalikelihood_cells[hash];
 
+    //There are two options for how to calculate this: 
+    // 1) We use the region counts
+    // 2) We use the collective log likelihood of all amplicons (amplicon counts) within the region
+    //Regardless of which, the caching on region proportion still works
+    // The strategy is to use option 2 if we have amplicons and more than one amplicon for the region, otherwise option 1.
 
-    double theta = data.region_to_theta[region]; //parameters.theta;
-    std::vector<double> cnv_loglikelihoods{};
-    cnv_loglikelihoods.resize(n_cells);
-    for (int j=0;j<n_cells;j++){
-        double expected_read_count_region = cells[j].total_counts * region_proportion;
-        cnv_loglikelihoods[j] = std::lgamma(cells[j].region_counts[region] + theta-1) + theta * std::log(theta / (theta + expected_read_count_region))
-                                + cells[j].region_counts[region] * std::log(expected_read_count_region / (expected_read_count_region+theta));
+    std::vector<double> cnv_loglikelihoods(n_cells, 0.0);
+
+    if (n_amplicons > 0 && data.region_to_amplicons[region].size() > 1) {
+        //option 2 - amplicon counts
+        for (auto amp : data.region_to_amplicons[region]) {
+            double theta = data.amplicon_to_theta[amp]; //parameters.theta;
+            double amplicon_proportion = data.amplicon_weights[amp] * exp_cn / normalization_factor;
+            for (int j = 0; j < n_cells; j++) {
+                double expected_read_count_amplicon = cells[j].total_counts * amplicon_proportion;
+                cnv_loglikelihoods[j] += std::lgamma(cells[j].amplicon_counts[amp] + theta - 1) + theta * std::log(theta / (theta + expected_read_count_amplicon))
+                    + cells[j].amplicon_counts[amp] * std::log(expected_read_count_amplicon / (expected_read_count_amplicon + theta));
+            }
+        }
+    }
+    else {
+        //option 1 - region counts
+        double theta = data.region_to_theta[region]; //parameters.theta;
+        for (int j = 0; j < n_cells; j++) {
+            double expected_read_count_region = cells[j].total_counts * region_proportion;
+            cnv_loglikelihoods[j] = std::lgamma(cells[j].region_counts[region] + theta - 1) + theta * std::log(theta / (theta + expected_read_count_region))
+                + cells[j].region_counts[region] * std::log(expected_read_count_region / (expected_read_count_region + theta));
+        }
     }
     cache_cnalikelihood_cells[hash] = cnv_loglikelihoods;
     count_cache++;

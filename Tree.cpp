@@ -764,6 +764,8 @@ void Tree::compute_prior_score(){
     // One lineage cannot have more than one CNA affecting each region (but it is still possible to have events affecting the same region in parallel branches)
     log_prior_score -= rec_check_max_one_event_per_region_per_lineage();
     //If you have a somatic mutation, it is an unlikely event to have it removed by a CNLOH - the algorthm tends to do this. Penalize this
+    //This is a bit tricky though - it is true if the mutation is a driver, but not if it is a passenger
+    //TODO: Look into this - we could perhaps still penalize it a bit, but not that much
     log_prior_score -= rec_get_number_of_cnloh_removing_somatic_mut()* parameters.cnloh_removing_somatic_mut_penalty;
     //An undesired behavior is that CNAs tend to end up in two children instead of in the root, presumably since it is possible to adapt better to noise
     //We therefore penalize to have the same event in two child branches of the same node. It is still possible, but requires more evidence now.

@@ -273,9 +273,9 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
                     for (int k=0;k<n_regions;k++){
                         if (data.region_is_reliable[k]){
                             //to support double loss, we never use a cn_regions below 0.05 - it is not possible to calculate the ll for 0, there is some noise, leads to infinity
-                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(parent->cn_regions[k]), parameters.min_exp_cn)/ normalization_factor_parent);
+                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k], std::max(double(parent->cn_regions[k]), parameters.min_exp_cn), normalization_factor_parent);
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]-=temp_scores[j];
-                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(cn_regions[k]), parameters.min_exp_cn) /normalization_factor);
+                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k], std::max(double(cn_regions[k]), parameters.min_exp_cn), normalization_factor);
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]+=temp_scores[j];
                         }
                     }
@@ -283,14 +283,14 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
             }
         }
         else{
-            for (int k: affected_regions){
-                if (data.region_is_reliable[k]){
-                    temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(parent->cn_regions[k]), parameters.min_exp_cn)/2.0);
-                    for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]-=temp_scores[j];
-                    temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(cn_regions[k]), parameters.min_exp_cn) /2.0);
-                    for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]+=temp_scores[j];
-                }
-            }
+            //for (int k: affected_regions){
+            //    if (data.region_is_reliable[k]){
+            //        temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(parent->cn_regions[k]), parameters.min_exp_cn)/2.0);
+            //        for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]-=temp_scores[j];
+            //        temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k] * std::max(double(cn_regions[k]), parameters.min_exp_cn) /2.0);
+            //        for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]+=temp_scores[j];
+            //    }
+            //}
         }
         for (int j=0;j<n_cells;j++){
             attachment_scores[j] = attachment_scores_SNV[j] + attachment_scores_CNA[j];
