@@ -534,6 +534,8 @@ double Tree::rec_check_max_one_event_per_region_per_lineage(int node, std::vecto
     // 1) Loss above in the tree followed by a gain, leading to a CNLOH. This is a common scenario in biology.
     // 2) LOH above followed by a second LOH, resulting in a double loss. This is only allowed 
     //    if parameters.allow_double_allele_loss is true
+    // Since it looks like more combinations are happening, for example gain after a loss,
+    // we also allow this but with a penalty
     double penalty = 0;
     if (node == 0) {
         previousEvents.resize(data.region_to_name.size());
@@ -541,18 +543,19 @@ double Tree::rec_check_max_one_event_per_region_per_lineage(int node, std::vecto
 
     for (auto CNA : nodes[node]->get_CNA_events()) {
         previousEvents[std::get<0>(CNA)].push_back(std::get<1>(CNA));
-        if (previousEvents[std::get<0>(CNA)].size() > 2) {
+        if (previousEvents[std::get<0>(CNA)].size() > 2) { //we don't allow more than two CNV events in the same lineage
             return 100000;
         }
         else if (previousEvents[std::get<0>(CNA)].size() == 2) {
-            if (previousEvents[std::get<0>(CNA)][0] != -1) { //must start with a loss
-                return 100000;
-            }
-            if ((previousEvents[std::get<0>(CNA)][1] == 0) || //CHLOH after loss, not ok
-                ((previousEvents[std::get<0>(CNA)][1] == -1) && !parameters.allow_double_allele_loss)) { //Loss + loss only ok with param set, loss + gain always ok, will automatically be CNLOH
-                return 10000;
-            }
-            //we still penalize these cases a bit
+            //if (previousEvents[std::get<0>(CNA)][0] != -1) { //must start with a loss
+            //    return 100000;
+            //}
+            //if ((previousEvents[std::get<0>(CNA)][1] == 0) || //CHLOH after loss, not ok
+            //    ((previousEvents[std::get<0>(CNA)][1] == -1) && !parameters.allow_double_allele_loss)) { //Loss + loss only ok with param set, loss + gain always ok, will automatically be CNLOH
+            //    return 100000;
+            //}
+            
+            //we penalize all such cases the same
             penalty += parameters.two_CNA_in_lineage_penalty;
         }
     }
@@ -804,7 +807,7 @@ void Tree::to_dot(std::string filename, bool simplified){
     }
     std::string basename(filename);
     if (full_output){
-        filename = filename + "_tree.gv";
+        filename = filename + "tree.gv";
     }
     else{
         basename = filename.substr(0,filename.size()-3);
@@ -836,7 +839,16 @@ void Tree::to_dot(std::string filename, bool simplified){
 
     for (int i=0;i<n_nodes;i++){
         if (simplified) out_file<<i<<"[label=<"<<nodes[i]->get_label_simple(excluded_mutations)<<">];"<<std::endl;
-        else out_file<<i<<"[label=<"<<nodes[i]->get_label()<<">];"<<std::endl;
+        else {
+            out_file << i << "[label=<";
+            if (i == 0) {
+                out_file << "<B>Root</B><br/>\n";
+            }
+            else {
+                out_file << "<B>Node " << i << "</B><br/>\n";
+            }
+            out_file << nodes[i]->get_label() << ">];" << std::endl;
+        }
     }
 
     for (int k=0;k<n_nodes;k++){
@@ -889,8 +901,8 @@ void Tree::to_dot(std::string filename, bool simplified){
         }
 
         // Assignments of cells to nodes 
-        std::ofstream out_file_cell_assignments(basename+"_cellAssignments.tsv");
-        std::ofstream out_file_cell_assignment_probs(basename+"_cellAssignmentProbs.tsv");
+        std::ofstream out_file_cell_assignments(basename+"cellAssignments.tsv");
+        std::ofstream out_file_cell_assignment_probs(basename+"cellAssignmentProbs.tsv");
 
         //Header
         out_file_cell_assignments <<"cell\tnode\tdoublet"<<std::endl;
@@ -934,7 +946,7 @@ void Tree::to_dot(std::string filename, bool simplified){
 
         // ----------------------------------
         // Tree in json format
-        std::ofstream out_file_json(basename+"_tree.json");
+        std::ofstream out_file_json(basename+"tree.json");
         out_file_json<<"{"<<std::endl;
         out_file_json<<"\"nodes\":["<<std::endl;
         for (int k=0;k<n_nodes;k++){
@@ -1001,7 +1013,7 @@ void Tree::to_dot(std::string filename, bool simplified){
         // ----------------------------------
         // Node genotypes 
 
-        std::ofstream out_file_genotypes(basename+"_nodes_genotypes.tsv");
+        std::ofstream out_file_genotypes(basename+"nodes_genotypes.tsv");
 
         // Header
         out_file_genotypes<<"node";
@@ -1033,7 +1045,7 @@ void Tree::to_dot(std::string filename, bool simplified){
         // Node copy numbers
         if (use_CNA){
 
-            std::ofstream out_file_copynumbers(basename+"_nodes_copynumbers.tsv");
+            std::ofstream out_file_copynumbers(basename+"nodes_copynumbers.tsv");
 
             // Header
             out_file_copynumbers<<"node";
@@ -1230,12 +1242,24 @@ bool Tree::select_regions(int index) {
             nodes_nbcells[best_attachments[j]]++;
         }
     }
+    
+    std::vector<double> mean_region_probabilities(n_regions, 0.0);
 
-    // Either used predetermined region weights or estimate them using cells attached to the root.
+    // Either use predetermined region weights or estimate them using cells attached to the root.
     if (data.predetermined_region_weights.size() > 0) {
-        for (int k = 0; k < n_regions; k++) region_probabilities[k] = data.predetermined_region_weights[k];
+        //for (int k = 0; k < n_regions; k++) region_probabilities[k] = data.predetermined_region_weights[k];
+        region_probabilities = data.predetermined_region_weights;
+
+        //calculate mean region probabilities across the samples for use with the old code below, in case some regions are "UNKNOWN"
+        for (std::size_t r = 0; r < n_regions; ++r) {
+            for (std::size_t i = 0; i < data.sample_ids.size(); ++i) {
+                mean_region_probabilities[r] += region_probabilities[r][i] / double(data.sample_ids.size());
+            }
+        }
     }
     else {
+        //TODO: Fix this at some point - or say that the user must provide these
+        /*
         if (nodes_nbcells[0] < std::max(40.0, 0.015 * n_cells)) { // not enough cells attached to the root
             // If some nodes have CNLOH, try to use one node without CNLOH in its ancestors as the root.
             std::vector<bool> CNLOH_in_ancestors(n_nodes, false);
@@ -1262,7 +1286,7 @@ bool Tree::select_regions(int index) {
             else {
                 root = node_newroot;
             }
-        }
+        }*/
     }
     //  Compute average region probability in each node
     std::vector<std::vector<std::vector<double>>> nodes_regionprobs{};
@@ -1277,6 +1301,8 @@ bool Tree::select_regions(int index) {
                 nodes_regionprobs[k][best_attachments[j]].push_back(1.0 * cells[j].region_counts[k] / cells[j].total_counts);
             }
         }
+        //TODO: Fix this at some point - or say that the user must provide these
+        /*
 
         if (data.predetermined_region_weights.size() == 0) {
             if (nodes_regionprobs[k][root].size() < std::max(40.0, 0.015 * n_cells)) {
@@ -1289,7 +1315,7 @@ bool Tree::select_regions(int index) {
                 rootprob += prob / nodes_regionprobs[k][root].size();
             }
             region_probabilities[k] = rootprob;
-        }
+        }*/
     }
     // Select regions whose probability is different between the root and another node
     for (int k = 0; k < n_regions; k++) {
@@ -1305,7 +1331,7 @@ bool Tree::select_regions(int index) {
                     if (nodes_regionprobs[k][n].size() >= std::max(40.0, 0.03 * n_cells)) {
                         double prob = 0;
                         for (double d : nodes_regionprobs[k][n]) prob += d / nodes_regionprobs[k][n].size();
-                        if ((prob > region_probabilities[k] * 1.275 || region_probabilities[k] > prob * 1.35) && (region_probabilities[k] > 0.05 / n_regions || (!parameters.filter_regions))) {
+                        if ((prob > mean_region_probabilities[k] * 1.275 || mean_region_probabilities[k] > prob * 1.35) && (mean_region_probabilities[k] > 0.05 / n_regions || (!parameters.filter_regions))) {
                             candidate_regions.push_back(k);
                             break;
                         }
@@ -1663,7 +1689,16 @@ void Tree::add_remove_CNA(bool use_CNA){
         //at a 33% chance, initiate the alleles according to the prior supplied as input by the user.
         //otherwise just randomize
         bool bInit = (std::rand() % 3) == 2;
+        bool bInvertAlleles = (std::rand() % 4) == 3;
         double alleleHastings = bInit ? 1.0 / 3.0 : 2.0/3.0;
+        if (bInit) {
+            if (bInvertAlleles) {
+                alleleHastings = alleleHastings / 4.0;
+            }
+            else {
+                alleleHastings = alleleHastings * 3.0 / 4.0;
+            }
+        }
 
         for (int i=0;i<data.region_to_loci[region].size();i++){
             int allele = std::rand() % 2; //0: CNA affects ref allele; 1: CNA affects alt allele
@@ -1673,11 +1708,21 @@ void Tree::add_remove_CNA(bool use_CNA){
                 case CNAP_DECREASED:
                     if (type <= 0) {
                         //we are adding a loss of some kind. We then assume that a decreased CNV means that the mutation is lost
-                        allele = 1;
+                        if (bInvertAlleles) {
+                            allele = 0;
+                        }
+                        else {
+                            allele = 1;
+                        }
                     }
                     else {
                         //this is a gain, we then assume that the ref allele is increased (since AF is decreased)
-                        allele = 0;
+                        if (bInvertAlleles) {
+                            allele = 1;
+                        }
+                        else {
+                            allele = 0;
+                        }
                     }
                     alleleHastings = alleleHastings / 2;//reduce hastings, no randomization
                     break;
@@ -2040,7 +2085,7 @@ double Tree::get_regionprobs_variance(){
     for (int k=0;k<n_regions;k++){
         if (data.region_is_reliable[k]){
             n_reliable_regions++;
-            mean+=region_probabilities[k] * n_regions;
+            mean+=region_probabilities[k][0] * n_regions; //TODO - I just took the region probability from the first sample here - but this function is not used
         }
     }
     mean = mean / n_reliable_regions;
@@ -2048,8 +2093,8 @@ double Tree::get_regionprobs_variance(){
     double variance=0;
     for (int k=0;k<n_regions;k++){
         if (data.region_is_reliable[k]){
-            std::cout<<k<<": "<<region_probabilities[k] * n_regions<<std::endl;
-            variance+= std::pow(region_probabilities[k]*n_regions - mean ,2);
+            std::cout<<k<<": "<<region_probabilities[k][0] * n_regions<<std::endl; //also here
+            variance+= std::pow(region_probabilities[k][0]*n_regions - mean ,2); //and here
         }
     }
     variance = variance/n_reliable_regions;

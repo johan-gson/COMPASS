@@ -46,10 +46,10 @@ class Node {
         void update_genotype(Node* parent, bool isroot);
         // compute attachment scores from scratch
         void compute_attachment_scores(bool use_CNA,const std::vector<double>& dropout_rates_ref,
-                                        const std::vector<double>& dropout_rates_alt,const std::vector<double>& region_probabilities);
+                                        const std::vector<double>& dropout_rates_alt, const std::vector <std::vector<double>>& region_probabilities);
         // just compute difference with parent
         void compute_attachment_scores_parent(bool use_CNA,Node* parent,const std::vector<double>& dropout_rates_ref,
-                                        const std::vector<double>& dropout_rates_alt,const std::vector<double>& region_probabilities,bool recompute_CNA_scores);
+                                        const std::vector<double>& dropout_rates_alt, const std::vector <std::vector<double>>& region_probabilities,bool recompute_CNA_scores);
 
         // MCMC moves for the nodes
         void add_mutation(int locus){mutations.push_back(locus);}
@@ -90,7 +90,7 @@ class Node {
         int get_n_ref_allele(int locus){return n_ref_allele[locus];}
         int get_n_alt_allele(int locus){return n_alt_allele[locus];}
         const std::vector<int>& get_mutations() {return mutations;}
-        int get_number_mutations() {return mutations.size();}
+        std::size_t get_number_mutations() {return mutations.size();}
         int get_number_non_germline_mutations() {
             int n = 0;
             for (std::size_t i = 0; i < mutations.size(); ++i) {
@@ -107,7 +107,7 @@ class Node {
         int get_cn_region(int region){return cn_regions[region];}
         std::set<std::tuple<int,int,std::vector<int>>> get_CNA_events() {return CNA_events;}
         std::set<int> get_affected_regions(){return affected_regions;}
-        int get_number_CNA() {return CNA_events.size();}
+        std::size_t get_number_CNA() {return CNA_events.size();}
         int get_number_CNA_noncopyneutral() {
             int count=0;
             for (auto CNA: CNA_events){

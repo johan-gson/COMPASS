@@ -37,7 +37,8 @@ struct Cell{
     std::vector<int> GQ;
     CellType cell_type;
     std::string name;
-    int total_counts; // sum of the read counts in each region
+    int total_counts; // sum of the read counts in each region, i.e., total reads counts for the cell
+    std::size_t sample = 0;
 };
 
 struct Data{
@@ -52,17 +53,18 @@ struct Data{
     std::vector<int> locus_to_region;
     std::vector <VariantType> locus_to_variant_type;
     std::vector <CNAllelePrior> locus_to_cna_allele_prior;
+    std::vector<std::string> sample_ids;
     
     std::vector<std::vector<int>> region_to_loci; //list of loci on this amplicon (possibly empty)
     std::vector<std::string> region_to_chromosome;
     std::vector<std::string> region_to_name;
     std::vector<bool> region_is_reliable; // true for the amplicons that are used for computing the CNV score.
-    std::vector<double> predetermined_region_weights; // probability for a read to fall in each of the regions, when these values are given as input and not inferred (otherwise they will be inferred by using the cells attached at the root)
+    std::vector<std::vector<double>> predetermined_region_weights; // [region][sample]probability for a read to fall in each of the regions, when these values are given as input and not inferred (otherwise they will be inferred by using the cells attached at the root)
     std::vector<CNType> region_to_cn_type;
-    std::vector<double> region_to_theta;
+    std::vector<std::vector<double>> region_to_theta; //[region][sample]
     std::vector<std::string> amplicon_to_name;
-    std::vector<double> amplicon_to_theta;
-    std::vector<double> amplicon_weights;
+    std::vector<std::vector<double>> amplicon_to_theta;//[region][sample]
+    std::vector<std::vector<double>> amplicon_weights;//[region][sample]
     std::vector<int> amplicon_to_region;
     std::vector<std::vector<std::size_t>> region_to_amplicons;
 };
@@ -98,7 +100,7 @@ struct Params{
     double somatic_non_root_bonus = 1000;
     double normal_not_at_root_penalty = 1000;
     double malignant_at_root_penalty = 50;
-    double cnloh_removing_somatic_mut_penalty = 1000;
+    double cnloh_removing_somatic_mut_penalty = 500;
     double cna_in_multiple_branches_penalty = 1000;
     double two_CNA_in_lineage_penalty = 100; //we want these to be well supported for them to exist
     bool allow_double_allele_loss = true;

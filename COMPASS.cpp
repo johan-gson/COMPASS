@@ -222,9 +222,9 @@ int main(int argc, char* argv[]){
 
     std::string gv_filename(output);
     if (output.size() <= 3 || (output.size() > 3 && output.substr(output.size() - 3) != ".gv")) {
-        gv_filename = output + +"_tree.gv";
+        gv_filename = output + "tree.gv";
     }
-    std::cout << "Completed ! The output was written to " << output << ". You can visualize the tree by running: dot -Tpng " << gv_filename << " -o output.png" << std::endl;
+    std::cout << "Completed ! The output was written to " << output << ". You can visualize the tree by running: dot -Tpng " << gv_filename << " -o " << output << "output.png" << std::endl;
 
     return 0;
 }

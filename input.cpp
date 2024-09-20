@@ -1,4 +1,4 @@
-#include<cmath>
+#include <cmath>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -100,7 +100,7 @@ inline CNAllelePrior parse_cn_allele_prior(const std::string& str) {
 
 
 void load_CSV(std::string base_name, std::string regionweights_file, bool use_CNA){
-    std::ifstream file_variants(base_name+"_variants.csv");
+    std::ifstream file_variants(base_name+"variants.csv");
     if(!file_variants.is_open()) throw std::runtime_error("Could not open variants file");
     // Read region counts (if use CNA)
     std::vector<std::vector<int>> region_counts{};
@@ -110,7 +110,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     std::string line, val;
     if(use_CNA){
         std::cout << "Loading regions...\n";
-        std::ifstream file_region(base_name+"_regions.csv");
+        std::ifstream file_region(base_name+"regions.csv");
         if (!file_region.is_open()) throw std::runtime_error("Could not open region file");
         int region_index=0;
         while(std::getline(file_region,line,'\n')){
@@ -134,9 +134,6 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             //second column is prior knowledge - is the region known to be copy neutral, or does it look like there is a CNV?
             std::getline(ss, val, ',');
             data.region_to_cn_type.push_back(parse_cn_type(val));
-            //third column is theta
-            std::getline(ss, val, ',');
-            data.region_to_theta.push_back(atof(val.c_str()));
 
             while (std::getline(ss, val, ',')){
                 counts.push_back(stoi(val));
@@ -148,7 +145,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
         file_region.close();
 
 
-        std::ifstream file_ampl(base_name + "_amplicons.csv");
+        std::ifstream file_ampl(base_name + "amplicons.csv");
         if (file_ampl.is_open()) {
             std::cout << "Loading amplicons...\n";
             data.region_to_amplicons.resize(n_regions);
@@ -169,7 +166,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             }
 
             //also read the amplicon meta - if the amplicons file is present, the meta file is mandatory
-            std::ifstream file_meta(base_name + "_amplicon_meta.csv");
+            std::ifstream file_meta(base_name + "amplicon_meta.csv");
             if (!file_meta.is_open()) throw std::runtime_error("Could not open amplicon meta file");
             
             //first get header - we just skip that for now, would be good to check that the cells are in the same order
@@ -180,19 +177,13 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
                 std::stringstream ss(line);
                 //region id: we only check the id, no need to store it anywhere
                 std::getline(ss, val, ',');
-                if(data.amplicon_to_name[ampl_index] != val) throw std::runtime_error("Amplicon order differens between counts and meta");
+                if(data.amplicon_to_name[ampl_index] != val) throw std::runtime_error("Amplicon order differs between counts and meta");
                 std::getline(ss, val, ',');
                 //region: convert region name to region index
                 region_index = std::find(data.region_to_name.begin(), data.region_to_name.end(), val) - data.region_to_name.begin();
                 if (region_index >= n_regions) throw std::runtime_error(std::string("Non-existing region in amplicon meta: " + val));
                 data.amplicon_to_region.push_back(region_index);
                 data.region_to_amplicons[region_index].push_back(ampl_index);
-                //amplicon weight
-                std::getline(ss, val, ',');
-                data.amplicon_weights.push_back(stof(val));
-                //amplicon theta
-                std::getline(ss, val, ',');
-                data.amplicon_to_theta.push_back(stof(val));
 
                 ++ampl_index;
             }
@@ -366,7 +357,8 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     //read cell metadata
     std::cout << "Loading cell metadata... ";
     std::vector<CellType> cellTypes;
-    std::ifstream file_cellmeta(base_name + "_cell_metadata.csv");
+    std::vector<std::size_t> cellSampleIndices;
+    std::ifstream file_cellmeta(base_name + "cell_metadata.csv");
     if (file_cellmeta) {
         std::size_t i = 0;
         std::string line;
@@ -376,33 +368,36 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             if (line.empty()) continue;
 
             std::istringstream iss(line);
-            std::string cellID, cellTypeStr;
+            std::string cellID, cellTypeStr, sampleId;
 
             // Split the line by the comma delimiter
-            if (std::getline(iss, cellID, ',') && std::getline(iss, cellTypeStr, ',')) {
-                try {
-                    // Convert the cell type string to enum
-                    CellType ct = parse_cell_type(cellTypeStr);
-                    // Store the results in the vectors
-                    if (cellID != cell_names[i]) {
-                        throw std::runtime_error(std::string("The cell ids in ") + base_name + "_cell_metadata.csv does not match that of the variant file. They must be in the same order!");
-                    }
-                    cellTypes.push_back(ct);
-                    ++i;
+            if (std::getline(iss, cellID, ',') && std::getline(iss, cellTypeStr, ',') && std::getline(iss, sampleId, ',')) {
+                // Convert the cell type string to enum
+                CellType ct = parse_cell_type(cellTypeStr);
+                // Store the results in the vectors
+                if (cellID != cell_names[i]) {
+                    throw std::runtime_error(std::string("The cell ids in ") + base_name + "cell_metadata.csv does not match that of the variant file. They must be in the same order!");
                 }
-                catch (const std::invalid_argument& e) {
-                    std::cerr << e.what() << " Skipping line: " << line << std::endl;
-                    // Optionally, handle the error (e.g., log it) and continue
+                cellTypes.push_back(ct);
+
+                auto it = std::find(data.sample_ids.begin(), data.sample_ids.end(), sampleId);
+                if (it == data.sample_ids.end()) {
+                    cellSampleIndices.push_back(data.sample_ids.size());
+                    data.sample_ids.push_back(sampleId);
                 }
+                else {
+                    cellSampleIndices.push_back(it - data.sample_ids.begin());
+                }
+
+                ++i;
             }
             else {
-                std::cerr << "Error parsing line: " << line << std::endl;
-                continue; // Skip malformed lines
+                throw std::runtime_error("Failed to parse line in cell metadata.");
             }
         }
         file_cellmeta.close();
         if (cellTypes.size() != cell_names.size()) {
-            throw std::runtime_error(std::string("The cell ids in ") + base_name + "_cell_metadata.csv does not match that of the variant file. The number of cells differ.");
+            throw std::runtime_error(std::string("The cell ids in ") + base_name + "cell_metadata.csv does not match that of the variant file. The number of cells differ.");
         }
         std::cout << "done\n";
     }
@@ -419,6 +414,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
         cells[j].alt_counts.reserve(n_loci);
         cells[j].genotypes.reserve(n_loci);
         cells[j].GQ.reserve(n_loci);
+        cells[j].sample = cellSampleIndices[j];
         for (int i=0;i<n_loci;i++){
             cells[j].ref_counts.push_back(ref_counts[i][j]);
             cells[j].alt_counts.push_back(alt_counts[i][j]);
@@ -440,27 +436,70 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
         cells[j].cell_type = cellTypes[j];
     }
     data.predetermined_region_weights.clear();
-    if (use_CNA){
-        // Read region weights, if they are given as input
-        if (regionweights_file!=""){
-            std::cout << "Loading predetermined region weights...\n";
-            data.predetermined_region_weights = std::vector<double>(n_regions,-1);
-            std::string line, val;
-            std::ifstream file_region(regionweights_file);
-            if (!file_region.is_open()) throw std::runtime_error("Could not open file with region weights.");
-            int region_index=0;
-            while(std::getline(file_region,line,'\n')){
-                int idx_comma=0;
-                while (line[idx_comma]!=',') idx_comma++;
-                std::string region_name = line.substr(0,idx_comma);
-                double weight = stod(line.substr(idx_comma+1,line.size()-idx_comma-1));
-                for (int k=0;k<n_regions;k++){
-                    if (data.region_to_name[k] == region_name){
-                        data.predetermined_region_weights[k] = weight;
-                    }
+    if (use_CNA) {
+        //read per sample meta
+        data.predetermined_region_weights.resize(n_regions); //first index is region, second sample - this is more practical in the calculations
+        data.region_to_theta.resize(n_regions);
+        data.amplicon_weights.resize(data.amplicon_to_name.size()); //first index is region, second sample - this is more practical in the calculations
+        data.amplicon_to_theta.resize(data.amplicon_to_name.size());
+        for (std::size_t i = 0; i < n_regions; ++i) {
+            data.predetermined_region_weights[i].resize(data.sample_ids.size());
+            data.region_to_theta[i].resize(data.sample_ids.size());
+        }
+
+        for (std::size_t i = 0; i < data.amplicon_to_name.size(); ++i) {
+            data.amplicon_weights[i].resize(data.sample_ids.size());
+            data.amplicon_to_theta[i].resize(data.sample_ids.size());
+        }
+
+        for (std::size_t i = 0; i < data.sample_ids.size(); ++i) {
+            //first per sample meta for regions
+            std::ifstream file_regmeta(base_name + "region_sample_meta_" + data.sample_ids[i] + ".csv");
+            if (!file_regmeta.is_open()) throw std::runtime_error(std::string("Could not open region per sample meta file: ") + data.sample_ids[i]);
+            if (file_regmeta) {
+                std::getline(file_regmeta, line, '\n'); //get rid of header
+                std::size_t reg_index = 0;
+                while (std::getline(file_regmeta, line, '\n')) {
+                    std::stringstream ss(line);
+                    //region id: we only check the id, no need to store it anywhere
+                    std::getline(ss, val, ',');
+                    if (data.region_to_name[reg_index] != val) throw std::runtime_error(std::string("Region order differs between counts and sample meta: ") + data.sample_ids[i]);
+                    std::getline(ss, val, ',');
+                    //region proportion
+                    data.predetermined_region_weights[reg_index][i] = atof(val.c_str());
+
+                    //theta
+                    std::getline(ss, val, ',');
+                    data.region_to_theta[reg_index][i] = atof(val.c_str());
+
+                    ++reg_index;
+                }
+            }
+            
+            //also read the amplicon per sample meta
+            std::ifstream file_ampmeta(base_name + "amplicon_sample_meta_" + data.sample_ids[i] + ".csv");
+            if (!file_ampmeta.is_open()) throw std::runtime_error(std::string("Could not open amplicon per sample meta file: ") + data.sample_ids[i]);
+            if (file_ampmeta) {
+                std::getline(file_ampmeta, line, '\n'); //get rid of header
+                std::size_t amp_index = 0;
+                while (std::getline(file_ampmeta, line, '\n')) {
+                    std::stringstream ss(line);
+                    //amplicon id: we only check the id, no need to store it anywhere
+                    std::getline(ss, val, ',');
+                    if (data.amplicon_to_name[amp_index] != val) throw std::runtime_error(std::string("Amplicon order differs between counts and sample meta: ") + data.sample_ids[i]);
+                    std::getline(ss, val, ',');
+                    //amplicon proportion
+                    data.amplicon_weights[amp_index][i] = atof(val.c_str());
+
+                    //theta
+                    std::getline(ss, val, ',');
+                    data.amplicon_to_theta[amp_index][i] = atof(val.c_str());
+
+                    ++amp_index;
                 }
             }
         }
+
         // Filter regions with insufficient coverage
         if (parameters.filter_regions) filter_regions();
         else data.region_is_reliable = std::vector<bool>(n_regions,true);
@@ -488,7 +527,7 @@ void filter_regions(){
         }
         //We don't filter out regions that the user has implicitly stated that they want included, but otherwise we do
         bool is_reliable = (data.region_to_cn_type[k] == CNType::CNT_CNV_DETECTED) || ((1.0*count_cells_below_threshold/n_cells <= 0.04) && (mean>=0.2/n_regions));
-        if (data.predetermined_region_weights.size()>k && data.predetermined_region_weights[k]==-1) is_reliable=false;
+        //if (data.predetermined_region_weights.size()>k && data.predetermined_region_weights[k]==-1) is_reliable=false;
         data.region_is_reliable.push_back(is_reliable);
         regions_filtered = regions_filtered || ((1.0*count_cells_below_threshold/n_cells > 0.04) || (mean<0.2/n_regions));
     }

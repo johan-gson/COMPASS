@@ -87,7 +87,7 @@ std::vector<double> Scores::compute_SNV_loglikelihoods(int c_ref,int c_alt,int l
         c_alt = 1;
     }
     else if (c_ref==0) c_alt=1;
-    else if (c_alt==0) c_ref==1;
+    else if (c_alt==0) c_ref=1;
 
     long int hash = c_ref+ 20*c_alt + 400*locus ;
     
@@ -108,7 +108,7 @@ std::vector<double> Scores::compute_SNV_loglikelihoods(int c_ref,int c_alt,int l
     int idx=0;
     for (int k=0;k<=c_ref;k++){
         for (int l=0;l<=c_alt;l++){
-            if (k==0 & l==0) continue;
+            if (k==0 && l==0) continue;
             long int hash_dropout = k+20*l + 400 * locus;
             if (cache_dropoutscores.count(hash_dropout)){
                 dropoutscores = cache_dropoutscores[hash_dropout];                
@@ -187,14 +187,28 @@ std::vector<double> Scores::compute_SNV_loglikelihoods(int c_ref,int c_alt,int l
     return scores_cells;
 }
 
-std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region_probability, double exp_cn, double normalization_factor){
-    double region_proportion = region_probability * exp_cn / normalization_factor;
+std::vector<double> Scores::compute_CNA_loglikelihoods(int region, const std::vector<double>& region_probabilities, double exp_cn, const std::vector<double>& normalization_factors){
+    std::vector<double> region_proportions;
+    for (std::size_t i = 0; i < region_probabilities.size(); ++i) {
+        region_proportions.push_back(region_probabilities[i] * exp_cn / normalization_factors[i]);
+    }
     
     // Compute the likelihood of the read count in the region, based on the negative binomial distribution (Gamma-Poisson)
     // theta is the scale parameter for the Gamma distribution.
-
-    int discretized_region_proportion = std::round(region_proportion*1000);
-    long int hash = region + 500*discretized_region_proportion;
+    //note that there is a risk that 64 bits are not enough here if we have 6 or more samples, so a bit risky, then in theory 
+    //two calculations could give the same hash, although unlikely
+    //uint64_t hash = region;
+    //const int max_discr_prop_val = 2000;
+    //uint64_t multFactor = n_regions;
+    //for (std::size_t i = 0; i < region_probabilities.size(); ++i) {
+    //    uint64_t discretized_region_proportion = std::round(region_proportions[i] * max_discr_prop_val);
+    //    hash += multFactor * discretized_region_proportion;
+    //    multFactor *= max_discr_prop_val;
+    //}
+    //hmm, since we have region in the hash, we only need to use the first probability - the others will be the same as the first was when calculated last time
+    const double max_discr_prop_val = 1000.0;//this number has a big impact on performance - if higher, it takes MUCH longer to run
+    uint64_t discretized_region_proportion = uint64_t(std::round(region_proportions[0] * max_discr_prop_val));
+    uint64_t hash = region + n_regions*discretized_region_proportion;
     if (cache_cnalikelihood_cells.count(hash)) return cache_cnalikelihood_cells[hash];
 
     //There are two options for how to calculate this: 
@@ -207,11 +221,18 @@ std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region
 
     if (n_amplicons > 0 && data.region_to_amplicons[region].size() > 1) {
         //option 2 - amplicon counts
+        std::vector<double> amplicon_proportions(data.sample_ids.size(), 0.0);
         for (auto amp : data.region_to_amplicons[region]) {
-            double theta = data.amplicon_to_theta[amp]; //parameters.theta;
-            double amplicon_proportion = data.amplicon_weights[amp] * exp_cn / normalization_factor;
+            const auto& thetas = data.amplicon_to_theta[amp]; //parameters.theta;
+            //precalculate the possible amplicon_proportions for all cells
+            for (std::size_t sample = 0; sample < data.sample_ids.size(); ++sample) {
+                amplicon_proportions[sample] = data.amplicon_weights[amp][sample] * exp_cn / normalization_factors[sample];
+            }
+            //double amplicon_proportion = data.amplicon_weights[amp] * exp_cn / normalization_factor;
             for (int j = 0; j < n_cells; j++) {
-                double expected_read_count_amplicon = cells[j].total_counts * amplicon_proportion;
+                std::size_t sample = cells[j].sample;
+                double theta = thetas[sample];
+                double expected_read_count_amplicon = cells[j].total_counts * amplicon_proportions[sample];
                 cnv_loglikelihoods[j] += std::lgamma(cells[j].amplicon_counts[amp] + theta - 1) + theta * std::log(theta / (theta + expected_read_count_amplicon))
                     + cells[j].amplicon_counts[amp] * std::log(expected_read_count_amplicon / (expected_read_count_amplicon + theta));
             }
@@ -219,9 +240,11 @@ std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region
     }
     else {
         //option 1 - region counts
-        double theta = data.region_to_theta[region]; //parameters.theta;
+        const auto& thetas = data.region_to_theta[region]; //parameters.theta;
         for (int j = 0; j < n_cells; j++) {
-            double expected_read_count_region = cells[j].total_counts * region_proportion;
+            std::size_t sample = cells[j].sample;
+            double theta = thetas[sample];
+            double expected_read_count_region = cells[j].total_counts * region_proportions[sample];
             cnv_loglikelihoods[j] = std::lgamma(cells[j].region_counts[region] + theta - 1) + theta * std::log(theta / (theta + expected_read_count_region))
                 + cells[j].region_counts[region] * std::log(expected_read_count_region / (expected_read_count_region + theta));
         }
@@ -234,8 +257,12 @@ std::vector<double> Scores::compute_CNA_loglikelihoods(int region, double region
 
 
 std::vector<double> Scores::get_dropoutref_counts_genotype(int c_ref,int c_alt, int locus,double dropout_rate_ref,double dropout_rate_alt){
-    if (c_ref==0) c_alt=1;
-    else if (c_alt==0) c_ref==1;
+    if ((c_ref == 0) && (c_alt == 0)) { //double loss, we expect a balanced noise, so set equal proportions the same way as wt
+        c_ref = 1;
+        c_alt = 1;
+    }
+    else if (c_ref==0) c_alt=1;
+    else if (c_alt==0) c_ref=1;
     if (c_ref==0 || c_alt==0){
         dropout_rate_ref=0.1;
         dropout_rate_alt=0.1;
@@ -256,8 +283,12 @@ std::vector<double> Scores::get_dropoutref_counts_genotype(int c_ref,int c_alt, 
 }
 
 std::vector<double> Scores::get_dropoutalt_counts_genotype(int c_ref,int c_alt, int locus,double dropout_rate_ref,double dropout_rate_alt){
-    if (c_ref==0) c_alt=1;
-    else if (c_alt==0) c_ref==1;
+    if ((c_ref == 0) && (c_alt == 0)) { //double loss, we expect a balanced noise, so set equal proportions the same way as wt
+        c_ref = 1;
+        c_alt = 1;
+    }
+    else if (c_ref==0) c_alt=1;
+    else if (c_alt==0) c_ref=1;
     if (c_ref==0 || c_alt==0){
         dropout_rate_ref=0.1;
         dropout_rate_alt=0.1;
@@ -290,7 +321,8 @@ void Scores::clear_cache(){
 
 void Scores::clear_cache_if_too_large(){
     // To avoid using too much memory
-    if (count_cache>8000) clear_cache();
+    //if (count_cache>8000) clear_cache();
+    if (count_cache > 20000) clear_cache();
 }
 
 

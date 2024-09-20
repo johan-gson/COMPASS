@@ -17,7 +17,7 @@ class Scores{
         std::map<int,std::map<long int,std::vector<double>>> cache_dropoutrate_cellscores;
         std::map<int,std::map<long int,std::vector<double>>> cache_dropoutrate_dropoutsref;
         std::map<int,std::map<long int,std::vector<double>>> cache_dropoutrate_dropoutsalt;
-        std::map<long int, std::vector<double>> cache_cnalikelihood_cells;
+        std::map<uint64_t, std::vector<double>> cache_cnalikelihood_cells;
         int count_cache;
     public:
         Scores();
@@ -28,7 +28,7 @@ class Scores{
         std::vector<double> compute_SNV_loglikelihoods(int c_ref,int c_alt, int locus, double dropout_rate_ref, double dropout_rate_alt);
 
 
-        std::vector<double> compute_CNA_loglikelihoods(int region, double region_probability, double exp_cn, double normalization_factor);
+        std::vector<double> compute_CNA_loglikelihoods(int region, const std::vector<double>& region_probabilities, double exp_cn, const std::vector<double>& normalization_factors);
 
         std::vector<double> get_dropoutref_counts_genotype(int c_ref,int c_alt, int locus,double dropout_rate_ref,double dropout_rate_alt);
         std::vector<double> get_dropoutalt_counts_genotype(int c_ref,int c_alt, int locus,double dropout_rate_ref,double dropout_rate_alt);

@@ -63,7 +63,7 @@ Tree Inference::find_best_tree(bool use_CNA, int nb_steps, int burn_in){
     }
     
 
-    if (tree_name!="") best_tree.to_dot(tree_name+"_noCNV.gv",false);
+    if (tree_name!="") best_tree.to_dot(tree_name+"noCNV.gv",false);
     // Find best tree with CNA
     if (index>=0) std::cout<<"Chain "<<std::to_string(index)<< ": Starting second phase (finding the best tree with CNA)."<<std::endl;
     else std::cout<<"Starting second phase (finding the best tree with CNA)."<<std::endl;

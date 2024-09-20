@@ -26,7 +26,7 @@ class Tree{
         std::vector<double> dropout_rates; // dropout rate for each locus.
         std::vector<double> dropout_rates_ref; // dropout rate of the reference allele
         std::vector<double> dropout_rates_alt; // dropout rate of the alternative allele
-        std::vector<double> region_probabilities; // probability for a read to fall on each region, when there are 2 copies of each region
+        std::vector<std::vector<double>> region_probabilities; // probability for a read to fall on each region, when there are 2 copies of each region
 
         std::vector<int> candidate_regions; // list of amplicons which might be affected by a CNV.
         std::vector<int> regions_successor; // amplicons_successor[k] is l if l is the next candidate amplicon and in the same chromosome as k,

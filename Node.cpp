@@ -222,7 +222,7 @@ void Node::update_genotype(Node* parent, bool isroot){
 }
 
 void Node::compute_attachment_scores(bool use_CNA,const std::vector<double>& dropout_rates_ref,
-                        const std::vector<double>& dropout_rates_alt, const std::vector<double>& region_probabilities){
+                        const std::vector<double>& dropout_rates_alt, const std::vector <std::vector<double>>& region_probabilities){
     // Compute the attachment score of a cell to a node, starting from scratch (for the root).
     for (int j=0;j<n_cells;j++){
         attachment_scores_SNV[j]=0.0;
@@ -243,7 +243,7 @@ void Node::compute_attachment_scores(bool use_CNA,const std::vector<double>& dro
 }
 
 void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std::vector<double>& dropout_rates_ref,
-                            const std::vector<double>& dropout_rates_alt, const std::vector<double>& region_probabilities,bool recompute_CNA_scores){
+                            const std::vector<double>& dropout_rates_alt, const std::vector <std::vector<double>>& region_probabilities,bool recompute_CNA_scores){
     // Compute the attachment score of a cell to a node, starting from the attachment score of the cell to the parent of the current node.
     // Only update the score for loci and regions where the genotype differs from the parent.
     // The CNA scores need to be computed once per tree, because they do not depend on the parameters inferred during the MCMC.
@@ -262,20 +262,22 @@ void Node::compute_attachment_scores_parent(bool use_CNA, Node* parent,const std
             if (recompute_CNA_scores){ // Only compute the CNA scores once per tree.
                 attachment_scores_CNA = parent->attachment_scores_CNA;
                 if (affected_regions.size()>0){ // If there are no CNA, can keep the CNA score of the parent.
-                    double normalization_factor=0.0;
-                    double normalization_factor_parent=0.0;
+                    std::vector<double> normalization_factors(data.sample_ids.size(), 0.0);
+                    std::vector<double> normalization_factors_parent(data.sample_ids.size(), 0.0);
                     for (int k=0;k<n_regions;k++){
                         if (data.region_is_reliable[k]){
-                            normalization_factor+= region_probabilities[k] *cn_regions[k];
-                            normalization_factor_parent+=region_probabilities[k] * parent->cn_regions[k];
+                            for (std::size_t i = 0; i < data.sample_ids.size(); ++i) {
+                                normalization_factors[i] += region_probabilities[k][i] * cn_regions[k];
+                                normalization_factors_parent[i] += region_probabilities[k][i] * parent->cn_regions[k];
+                            }
                         }
                     }
                     for (int k=0;k<n_regions;k++){
                         if (data.region_is_reliable[k]){
                             //to support double loss, we never use a cn_regions below 0.05 - it is not possible to calculate the ll for 0, there is some noise, leads to infinity
-                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k], std::max(double(parent->cn_regions[k]), parameters.min_exp_cn), normalization_factor_parent);
+                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k], std::max(double(parent->cn_regions[k]), parameters.min_exp_cn), normalization_factors_parent);
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]-=temp_scores[j];
-                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k], std::max(double(cn_regions[k]), parameters.min_exp_cn), normalization_factor);
+                            temp_scores = cache_scores->compute_CNA_loglikelihoods(k,region_probabilities[k], std::max(double(cn_regions[k]), parameters.min_exp_cn), normalization_factors);
                             for (int j=0;j<n_cells;j++) attachment_scores_CNA[j]+=temp_scores[j];
                         }
                     }
