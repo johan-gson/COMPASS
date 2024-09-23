@@ -321,8 +321,8 @@ void Scores::clear_cache(){
 
 void Scores::clear_cache_if_too_large(){
     // To avoid using too much memory
-    //if (count_cache>8000) clear_cache();
-    if (count_cache > 20000) clear_cache();
+    if (count_cache>8000) clear_cache();
+    //if (count_cache > 12000) clear_cache();
 }
 
 

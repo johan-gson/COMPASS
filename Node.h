@@ -59,7 +59,7 @@ class Node {
             bool inserted = false;
             if (std::get<1>(CNA) == -1) {
                 for (auto CNA2 : CNA_events) {
-                    if ((std::get<1>(CNA2) == -1) && (std::get<0>(CNA2) == std::get<0>(CNA2))) {
+                    if ((std::get<1>(CNA2) == -1) && (std::get<0>(CNA) == std::get<0>(CNA2))) {
                         remove_CNA(CNA2);
                         add_CNA(std::make_tuple(std::get<0>(CNA2), -2, std::get<2>(CNA2)), isRoot);
                         inserted = true;
@@ -158,6 +158,10 @@ class Node {
         // Label of the node, used for plotting.
         std::string get_label();
         std::string get_label_simple(std::set<int> excluded_mutations);
+
+        void set_cache_scores(Scores* scores) {
+            cache_scores = scores;
+        }
 
 };
 

@@ -16,9 +16,10 @@ class Inference{
         std::vector<double> move_weights;
         std::string tree_name;
         int index; // to identify the different chains that are run in parallel
+        bool inited_from_file = false;
         
     public:
-        Inference(std::string name="best_tree.gv", double temperature=10.0,int index=-1);
+        Inference(std::string name="best_tree.gv", double temperature=10.0,int index=-1, std::string start_tree_filename = "");
         ~Inference();
         Tree find_best_tree(bool use_CNA=true,int nb_steps=5000, int burn_in=1000);
         void mcmc(bool use_CNA, int nb_steps, int burn_in=1000);

@@ -11,6 +11,8 @@
 #include "Tree.h"
 #include "Scores.h"
 #include "input.h"
+#include <chrono>
+
 //For debugging
 #include <csignal>
 #include <iostream>
@@ -58,6 +60,8 @@ void signalHandler(int signal) {
 
 
 int main(int argc, char* argv[]){
+    auto startTime = std::chrono::high_resolution_clock::now();
+
     // Register signal handler for SIGFPE
     #ifndef _MSC_VER
     std::signal(SIGFPE, signalHandler); //for debugging
@@ -75,6 +79,7 @@ int main(int argc, char* argv[]){
     double betabin_overdisp = parameters.omega_het;
     bool use_CNA=true;
     bool output_simplified = true;
+    std::string start_tree;
     std::string output{};
     data.sex = "female";
     //parameters.verbose=true;
@@ -154,8 +159,11 @@ int main(int argc, char* argv[]){
         else if (strcmp(argv[i],"--sex")==0){
            data.sex= std::string(argv[i+1]);
         }
-        else if (strcmp(argv[i],"--prettyplot")==0){
-            if (strcmp(argv[i+1],"0")==0) output_simplified=false;
+        else if (strcmp(argv[i], "--prettyplot") == 0) {
+            if (strcmp(argv[i + 1], "0") == 0) output_simplified = false;
+        }
+        else if (strcmp(argv[i], "--start_tree") == 0) {
+            start_tree = argv[i + 1];
         }
         else if (argument.substr(0,1)=="-"){
             std::cout<<" Unrecognized argument: " <<argv[i]<<std::endl;
@@ -205,7 +213,7 @@ int main(int argc, char* argv[]){
     #pragma omp parallel for
 	for (int i=0;i<n_chains;i++){
 		std::srand(i);
-        Inference infer{ "",temperature,i };
+        Inference infer{ "",temperature,i,start_tree};
         best_trees[i] = infer.find_best_tree(use_CNA, chain_length, burn_in);
         results[i] = best_trees[i].log_score;
 	}
@@ -217,14 +225,23 @@ int main(int argc, char* argv[]){
             best_score_index = i;
         }
     }
-    if (output_simplified) best_trees[best_score_index].to_dot(output, true);
-    else best_trees[best_score_index].to_dot(output, false);
+    auto& best_tree = best_trees[best_score_index];
+    //It is a bit impractical, but the scores are deleted in the loop above - we create new ones here - will cost a bit of time
+    Scores scores;
+    best_tree.set_cache_scores(&scores);
+    best_tree.resort_nodes_in_tree();
+    if (output_simplified) best_tree.to_dot(output, true);
+    else best_tree.to_dot(output, false);
 
     std::string gv_filename(output);
     if (output.size() <= 3 || (output.size() > 3 && output.substr(output.size() - 3) != ".gv")) {
         gv_filename = output + "tree.gv";
     }
-    std::cout << "Completed ! The output was written to " << output << ". You can visualize the tree by running: dot -Tpng " << gv_filename << " -o " << output << "output.png" << std::endl;
+    auto finishTime = std::chrono::high_resolution_clock::now();
+
+    std::cout << "Completed in " << std::chrono::duration_cast<std::chrono::seconds> (finishTime - startTime).count() << 
+        " seconds! The output was written to " << output << ". You can visualize the tree by running: dot -Tpng " << 
+        gv_filename << " -o " << output << "output.png" << std::endl;
 
     return 0;
 }

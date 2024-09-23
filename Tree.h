@@ -11,7 +11,7 @@
 
 class Tree{
     //private:
-    public: //temp debug
+    private:
         // Tree structure
         bool use_CNA;
         int n_nodes;
@@ -29,6 +29,7 @@ class Tree{
         std::vector<std::vector<double>> region_probabilities; // probability for a read to fall on each region, when there are 2 copies of each region
 
         std::vector<int> candidate_regions; // list of amplicons which might be affected by a CNV.
+        std::vector<int> candidate_CNLOH_regions; // list of amplicons which might be affected by a CNV.
         std::vector<int> regions_successor; // amplicons_successor[k] is l if l is the next candidate amplicon and in the same chromosome as k,
                                           // or -1 if the next amplicon is not on the same chromosome
 
@@ -41,7 +42,7 @@ class Tree{
         std::vector<double> nodes_attachment_counts; //for each node, the expected number of cells attached to it
         double avg_diff_nodeprob; // how much the node probabilities changed between 2 iterations of the EM algorithm
         double avg_diff_dropoutrates; // how much the dropout rates changed between 2 iterations of the EM algorithm
-
+        void initialize_from_gv_file(std::string gv_file, bool use_CNA_arg);
 
     public:
         double hastings_ratio; // probability to move from previous tree to this tree / probability to move from this tree to the previous tree
@@ -49,7 +50,7 @@ class Tree{
         double log_likelihood;
         double log_score; //complete score of the tree, including the prior and the likelihood
 
-        Tree(Scores* cache, bool use_CNA, bool noRandomization = false); // constructor
+        Tree(Scores* cache, bool use_CNA, bool noRandomization = false, std::string start_tree_filename = ""); // constructor
         Tree(); // empty constructor
         Tree(const Tree& source); // copy constructor (deep copy)
         Tree(std::string gv_file, bool use_CNA=true); // create tree from graphviz file
@@ -63,12 +64,15 @@ class Tree{
 
         bool is_ancestor(int potential_ancestor, int potential_descendant); 
         double rec_check_max_one_event_per_region_per_lineage(int node = 0, std::vector<std::vector<int>> previousEvents = std::vector<std::vector<int>>());
-        int rec_get_number_of_cnloh_removing_somatic_mut(int node = 0, std::vector<int> muts = std::vector<int>()) const;
+        double rec_get_number_of_cnloh_removing_somatic_mut(int node = 0, std::vector<int> muts = std::vector<int>()) const;
         std::set<int> rec_get_nodes_in_lineages_with_2_CNA(int region, int node = 0, std::set<int> parents = std::set<int>(), 
             std::vector<int> previousEvents = std::vector<int>()) const;
         std::set<int> rec_get_descendents(int node) const;
         std::set<std::tuple<int, int>> rec_get_all_cna_events_in_tree(int node) const;
         double rec_get_cna_in_multiple_branches_penalty(int node = 0) const;
+        
+        //void rec_get_all_CNA_patterns(std::size_t node, std::map<std::size_t, std::vector<std::vector<std::size_t>>>& patterns);
+        //double rec_cna_appears_with_different_variant_pattern_penalty();
 
 
         void compute_attachment_scores(bool use_doublets_local,bool recompute_CNA_scores);
@@ -87,7 +91,6 @@ class Tree{
 
         void to_dot(std::string filename, bool simplified); //save the tree structure to the dot format (for visualization)
 
-        void find_CNA();
         void allow_CNA(){use_CNA=true;}
         bool select_regions(int index=-1);
         bool contains_candidate_regions(){return candidate_regions.size()>0;}
@@ -124,6 +127,18 @@ class Tree{
                 }
             }
         }
+
+        void rec_get_node_order(std::size_t node, std::vector<std::size_t>& res);
+        void resort_nodes_in_tree(bool allow_diff_dropoutrates = true);
+
+        //a bit of a hack since the scores are deleted when the inference is deleted, and that we use this afterwards
+        void set_cache_scores(Scores* scores) {
+            cache_scores = scores;
+            for (std::size_t i = 0; i < n_nodes; ++i) {
+                nodes[i]->set_cache_scores(scores);
+            }
+        }
+
 
         //for debugging
         Node* get_node(int i) { return nodes[i]; }

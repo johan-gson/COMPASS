@@ -15,16 +15,16 @@ extern int n_regions;
 extern Data data;
 extern Params parameters;
 
-Inference::Inference(std::string name, double temperature, int index):
+Inference::Inference(std::string name, double temperature, int index, std::string start_tree_filename):
         cache_scores{new Scores()},
-        t{cache_scores,false},
+        t{cache_scores,!start_tree_filename.empty(), false, start_tree_filename},
         t_prime{t},
         best_tree{t},
         tree_name{name},
         max_temperature{temperature},
         index(index)
     {
-
+    inited_from_file = !start_tree_filename.empty();
     // Weight of each MCMC move (does not have to be normalized)
     move_weights = {
         1,      // Prune and reattach
@@ -47,14 +47,19 @@ Inference::~Inference(){
 
 Tree Inference::find_best_tree(bool use_CNA, int nb_steps, int burn_in){
     //First, find the best tree without CNA.
-    if (index>=0) std::cout<<"Chain "<<std::to_string(index)<< ": Starting first phase (finding the best tree without CNA)."<<std::endl;
-    else std::cout<<"Starting first phase (finding the best tree without CNA)."<<std::endl;
-    mcmc(false, nb_steps,burn_in);
-    if (!use_CNA){
-        if (tree_name!="") best_tree.to_dot(tree_name+".gv",false);
-        return best_tree;
-    }
 
+    if (!(inited_from_file && use_CNA)) {
+        if (index >= 0) std::cout << "Chain " << std::to_string(index) << ": Starting first phase (finding the best tree without CNA)." << std::endl;
+        else std::cout << "Starting first phase (finding the best tree without CNA)." << std::endl;
+        mcmc(false, nb_steps, burn_in);
+        if (!use_CNA) {
+            if (tree_name != "") best_tree.to_dot(tree_name + ".gv", false);
+            return best_tree;
+        }
+    }
+    else {
+        std::cout << "Started from saved tree - will go directly to second phase" << std::endl;
+    }
     best_tree.select_regions(index); 
     if (!best_tree.contains_candidate_regions()){
         //If cannot find candidate regions which might contain a CNV (or if not cells are attached to the root), return now
@@ -72,6 +77,9 @@ Tree Inference::find_best_tree(bool use_CNA, int nb_steps, int burn_in){
     t_prime = t;
     mcmc(true, nb_steps,0);
     if (tree_name!="") best_tree.to_dot(tree_name+".gv",false);
+
+    if (index >= 0) std::cout << "Chain " << std::to_string(index) << ": Chain finished." << std::endl;
+    else std::cout << "Chain finished." << std::endl;
 
     return best_tree;
 }

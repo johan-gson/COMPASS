@@ -16,6 +16,13 @@ enum VariantType {
     VT_SOMATIC = 2 //malignant
 };
 
+enum VariantImpact {
+    VI_UNKNOWN = 0,
+    VI_DRIVER = 1,
+    VI_PASSENGER = 2,
+    VI_GERMLINE = 3
+};
+
 enum CNType {
     CNT_UNKNOWN = 0, //unknown, if we have no WGS data
     CNT_COPY_NEUTRAL = 1, //for example from WGS data
@@ -52,6 +59,7 @@ struct Data{
     std::vector<std::string> locus_to_name; //name of the variant, which describes the effect on the protein (if any)
     std::vector<int> locus_to_region;
     std::vector <VariantType> locus_to_variant_type;
+    std::vector <VariantImpact> locus_to_variant_impact;
     std::vector <CNAllelePrior> locus_to_cna_allele_prior;
     std::vector<std::string> sample_ids;
     
@@ -100,11 +108,13 @@ struct Params{
     double somatic_non_root_bonus = 1000;
     double normal_not_at_root_penalty = 1000;
     double malignant_at_root_penalty = 50;
-    double cnloh_removing_somatic_mut_penalty = 500;
+    double cnloh_removing_unknown_somatic_mut_penalty = 500;
+    double loss_removing_driver_somatic_mut_penalty = 20000;
     double cna_in_multiple_branches_penalty = 1000;
     double two_CNA_in_lineage_penalty = 100; //we want these to be well supported for them to exist
     bool allow_double_allele_loss = true;
     double min_exp_cn = 0.03; //used for double CN loss
+    double small_node_penalty = 600; //penalty for nodes that have very few cells and do not represent branches (have more than one child)
 };
 
 #endif

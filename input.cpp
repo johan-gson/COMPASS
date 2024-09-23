@@ -68,6 +68,24 @@ inline VariantType parse_variant_type(const std::string& str) {
     }
 }
 
+inline VariantImpact parse_variant_impact(const std::string& str) {
+    if (str == "UNKNOWN") {
+        return VI_UNKNOWN;
+    }
+    else if (str == "DRIVER") {
+        return VI_DRIVER;
+    }
+    else if (str == "PASSENGER") {
+        return VI_PASSENGER;
+    }
+    else if (str == "GERMLINE") {
+        return VI_GERMLINE;
+    }
+    else {
+        throw std::invalid_argument("Invalid variant impact string: " + str);
+    }
+}
+
 inline CNType parse_cn_type(const std::string& str) {
     if (str == "UNKNOWN") {
         return CNT_UNKNOWN;
@@ -180,7 +198,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
                 if(data.amplicon_to_name[ampl_index] != val) throw std::runtime_error("Amplicon order differs between counts and meta");
                 std::getline(ss, val, ',');
                 //region: convert region name to region index
-                region_index = std::find(data.region_to_name.begin(), data.region_to_name.end(), val) - data.region_to_name.begin();
+                region_index = int(std::find(data.region_to_name.begin(), data.region_to_name.end(), val) - data.region_to_name.begin());
                 if (region_index >= n_regions) throw std::runtime_error(std::string("Non-existing region in amplicon meta: " + val));
                 data.amplicon_to_region.push_back(region_index);
                 data.region_to_amplicons[region_index].push_back(ampl_index);
@@ -227,7 +245,7 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
     std::vector<std::string> columns{};
     while (std::getline(header, val, ',')){
         columns.push_back(val);
-        if (val != "CHR" && val!="POS" && val!="REF" && val!="ALT" && val!="REGION" && val!="NAME" && val!="FREQ" && val != "VARIANT_TYPE" && val != "CNA_ALLELE_PRIOR") {
+        if (val != "CHR" && val!="POS" && val!="REF" && val!="ALT" && val!="REGION" && val!="NAME" && val!="FREQ" && val != "VARIANT_TYPE" && val != "IMPACT" && val != "CNA_ALLELE_PRIOR") {
             cell_names.push_back(val);
         }
     }
@@ -275,6 +293,9 @@ void load_CSV(std::string base_name, std::string regionweights_file, bool use_CN
             }
             else if (columns[column_count] == "VARIANT_TYPE") {
                 data.locus_to_variant_type.push_back(parse_variant_type(val));
+            }
+            else if (columns[column_count] == "IMPACT") {
+                data.locus_to_variant_impact.push_back(parse_variant_impact(val));
             }
             else if (columns[column_count] == "CNA_ALLELE_PRIOR") {
                 data.locus_to_cna_allele_prior.push_back(parse_cn_allele_prior(val));
