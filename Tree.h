@@ -11,7 +11,7 @@
 
 class Tree{
     //private:
-    private:
+    public: //should be changed to private, but public is good for debugging
         // Tree structure
         bool use_CNA;
         int n_nodes;
@@ -144,6 +144,7 @@ class Tree{
         Node* get_node(int i) { return nodes[i]; }
         void add_node_no_randomization(int parent);
         void init_debug_tree(bool use_CNA_arg);
+        void merge_nodes(std::size_t node1, std::size_t node2);
 };
 
 #endif

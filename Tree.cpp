@@ -2343,3 +2343,26 @@ void Tree::init_debug_tree(bool use_CNA_arg) {
     compute_prior_score();
     update_full_score();
 }
+
+void Tree::merge_nodes(std::size_t node1, std::size_t node2) {
+    // Move the events of node 1 into node 2 
+    while (nodes[node1]->get_number_non_germline_mutations() > 0) {
+        nodes[node2]->add_mutation(nodes[node1]->remove_random_mutation());
+    }
+    while (nodes[node1]->get_number_CNA() > 0) {
+        std::tuple<int, int, std::vector<int>> CNA = nodes[node1]->remove_random_CNA();
+        if (node2 != 0) { //don't move copy number events to root. Instead just let them be deleted.
+            //also check that we are not joining two CNVs of the same region, in that case also just let it be deleted
+            bool found = false;
+            for (auto CNA2 : nodes[node2]->get_CNA_events()) {
+                if (std::get<0>(CNA) == std::get<0>(CNA2)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                nodes[node2]->add_CNA(CNA, node2 == 0);
+            }
+        }
+    }
+}

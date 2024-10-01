@@ -106,7 +106,7 @@ struct Params{
     double mut_notAtRoot_freq_cost;
     double germline_root_bonus = 1000; //this shouldn't really be needed
     double somatic_non_root_bonus = 1000;
-    double normal_not_at_root_penalty = 1000;
+    double normal_not_at_root_penalty = 100;
     double malignant_at_root_penalty = 50;
     double cnloh_removing_unknown_somatic_mut_penalty = 500;
     double loss_removing_driver_somatic_mut_penalty = 20000;
