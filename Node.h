@@ -10,6 +10,20 @@
 
 extern Data data;
 
+inline std::tuple<int, int, std::vector<int>> flip_CNA_alleles(std::tuple<int, int, std::vector<int>> CNA) {
+    std::vector<int>& alleles = std::get<2>(CNA);
+    for (std::size_t i = 0; i < alleles.size(); ++i) {
+        if (alleles[i] == 0) {
+            alleles[i] = 1;
+        }
+        else {
+            alleles[i] = 0;
+        }
+    }
+
+    return CNA;
+}
+
 class Node {
     private: 
         std::vector<int> mutations; //somatic mutations always transform from ref to alt. 
@@ -106,6 +120,14 @@ class Node {
         //  Accessors for CNAs
         int get_cn_region(int region){return cn_regions[region];}
         std::set<std::tuple<int,int,std::vector<int>>> get_CNA_events() {return CNA_events;}
+        std::tuple<int, int, std::vector<int>> get_CNA_from_region(int region) {
+            for (auto CNA : CNA_events) {
+                if (std::get<0>(CNA) == region) {
+                    return CNA;
+                }
+            }
+            return std::make_tuple(-1, 0, std::vector<int>());
+        }
         std::set<int> get_affected_regions(){return affected_regions;}
         std::size_t get_number_CNA() {return CNA_events.size();}
         int get_number_CNA_noncopyneutral() {

@@ -1502,6 +1502,15 @@ bool Tree::select_regions(int index) {
     return true;
 }
 
+void Tree::add_node_no_randomization(int parent) {
+    // Add a new node below an existing one, and randomly reassign the children of the parent node.
+    n_nodes++;
+    nodes.push_back(new Node(cache_scores));
+    parents.push_back(parent);
+    node_probabilities.resize(n_nodes);
+    compute_children();
+}
+
 
 void Tree::add_node(int parent){
     // Add a new node below an existing one, and randomly reassign the children of the parent node.
@@ -2318,15 +2327,6 @@ double Tree::get_regionprobs_variance(){
     return variance;
 }
 
-
-void Tree::add_node_no_randomization(int parent) {
-    // Add a new node below an existing one, and randomly reassign the children of the parent node.
-    n_nodes++;
-    nodes.push_back(new Node(cache_scores));
-    parents.push_back(parent);
-    node_probabilities.resize(n_nodes);
-    compute_children();
-}
 
 void Tree::init_debug_tree(bool use_CNA_arg) {
     cells_attach_loglik.resize(n_cells);
