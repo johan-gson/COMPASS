@@ -46,6 +46,8 @@ class Node {
 
 
     public:
+        NodeDefinition get_node_definition() const;
+
         std::vector<double> attachment_scores_SNV;
         std::vector<double> attachment_scores_CNA;
         std::vector<double> attachment_scores;

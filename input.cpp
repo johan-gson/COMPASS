@@ -11,7 +11,6 @@
 #include "Structures.h"
 #include "Scores.h"
 #include "input.h"
-#include <cmath>
 
 #ifdef _MSC_VER
 // Different include paths in VS for gsl g++ the way I installed it
@@ -117,7 +116,7 @@ inline CNAllelePrior parse_cn_allele_prior(const std::string& str) {
 }
 
 
-void load_CSV(std::string base_name, std::string regionweights_file, bool use_CNA){
+void load_CSV(std::string base_name, bool use_CNA){
     std::ifstream file_variants(base_name+"variants.csv");
     if(!file_variants.is_open()) throw std::runtime_error("Could not open variants file");
     // Read region counts (if use CNA)

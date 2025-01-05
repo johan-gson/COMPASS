@@ -14,6 +14,7 @@
 #include "../Tree.h"
 #include "../Scores.h"
 #include "../input.h"
+#include "../yaml_serialization.h"
 //For debugging
 //#include <csignal>
 //#include <iostream>
@@ -408,7 +409,7 @@ int main(int argc, char* argv[])
         burn_in = chain_length / 2;
     }
 
-    load_CSV(input_file, regionweights_file, use_CNA);
+    load_CSV(input_file, use_CNA);
 
     parameters.omega_het = std::min(parameters.omega_het, betabin_overdisp);
     parameters.omega_het_indel = std::min(parameters.omega_het_indel, betabin_overdisp);
@@ -441,7 +442,9 @@ int main(int argc, char* argv[])
     //Tree tree("C:/Code/Projects/RichterMissionBio/RichterMissionBio/data/WGS_data/DFCI-5573/DFCI-5573-RT-01/compass/DFCI-5573-RT-01_tree.gv", true);
     //Tree tree = build_debug_tree_1();
     //Tree tree = build_debug_tree_X1();
-    Tree tree("./output_before_extra_run_8/tree.gv", true);
+    Tree tree("./output_final/tree.gv", true);
+    write_yaml("./output/tree.yaml", tree.get_definition(), data);
+    TreeDefinition td2 = read_yaml("./output/tree.yaml", data);
 
     //Tree tree = build_debug_tree_1_chr9_LOH();
     //Tree tree = build_debug_tree_CN_1();

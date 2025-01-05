@@ -2366,3 +2366,59 @@ void Tree::merge_nodes(std::size_t node1, std::size_t node2) {
         }
     }
 }
+
+TreeDefinition Tree::get_definition() const {
+    TreeDefinition def;
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        def.nodes.push_back(nodes[i]->get_node_definition());
+    }
+    for (std::size_t i = 0; i < parents.size(); ++i) {
+        def.parents.push_back(std::size_t(parents[i]));
+    }
+
+    def.segment_variant_alleles = std::vector<std::size_t>(data.locus_to_name.size(), 0);//initialize to first allele
+    for (std::size_t v = 0; v < data.locus_to_cna_allele_prior.size(); ++v) {
+        //we assign all that are higher as 0 (keep default) and all lower as 1
+        //within a CNA, this will lead to that the lower and higher are always anticorrelated,
+        //which is really what matters unless they are part of a CNA, which is handled below.
+        //For the neutral/unknown, we just set 0 (keep the default from above)
+        if (data.locus_to_cna_allele_prior[v] == CNAP_DECREASED) {
+            def.segment_variant_alleles[v] = 1;
+        }
+    }
+
+    //cna variant alleles
+    //loop through all nodes and use the alleles assigned
+    for (std::size_t n = 0; n < nodes.size(); ++n) {
+        Node* pNode = nodes[n];
+        for (auto& CNA : pNode->get_CNA_events()) {
+            std::size_t r = std::get<0>(CNA);
+            auto& vec = std::get<2>(CNA);
+            //follow the standard that if the first segment variant is 1, the loss is on the second (alt) allele, and the first variant is on the second allele
+            // all of the other with 0 is instead on the first allele
+            //if the first segment variant is zero, everything is flipped. 
+            for (std::size_t i = 0; i < vec.size(); ++i) {
+                std::size_t ind = data.region_to_loci[r][i];
+                if (vec[i] == 1) {
+                    if (vec[0] == 1) {
+                        def.segment_variant_alleles[ind] = 1;
+                    }
+                    else {
+                        def.segment_variant_alleles[ind] = 0;
+                    }
+                }
+                else {
+                    if (vec[0] == 1) {
+                        def.segment_variant_alleles[ind] = 0;
+                    }
+                    else {
+                        def.segment_variant_alleles[ind] = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    return def;
+};
+

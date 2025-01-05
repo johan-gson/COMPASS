@@ -104,6 +104,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>../ext/fkyaml/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -118,6 +119,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>../ext/fkyaml/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -132,6 +134,7 @@
     <ClCompile Include="..\Node.cpp" />
     <ClCompile Include="..\Scores.cpp" />
     <ClCompile Include="..\Tree.cpp" />
+    <ClCompile Include="..\yaml_serialization.cpp" />
     <ClCompile Include="TestStuffVS.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -141,6 +144,7 @@
     <ClInclude Include="..\Scores.h" />
     <ClInclude Include="..\Structures.h" />
     <ClInclude Include="..\Tree.h" />
+    <ClInclude Include="..\yaml_serialization.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

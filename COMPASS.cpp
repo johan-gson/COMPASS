@@ -71,7 +71,6 @@ int main(int argc, char* argv[]){
     parameters.verbose=false;
     // Read command line arguments
     std::string input_file{};
-    std::string regionweights_file{};
     int n_chains=4;
     int chain_length=5000;
     int burn_in = -1;
@@ -87,9 +86,6 @@ int main(int argc, char* argv[]){
         std::string argument{argv[i]};
         if (strcmp(argv[i],"-i")==0){
             input_file = argv[i+1];
-        }
-        else if (strcmp(argv[i],"--regionweights")==0){
-            regionweights_file = argv[i+1];
         }
         else if (strcmp(argv[i],"--nchains")==0){
             n_chains=atoi(argv[i+1]);
@@ -187,7 +183,7 @@ int main(int argc, char* argv[]){
         burn_in=chain_length/2;
     }
     std::cout << "Loading data...\n";
-    load_CSV(input_file,regionweights_file,use_CNA); 
+    load_CSV(input_file,use_CNA); 
     std::cout << "Done...\n";
 
     parameters.omega_het = std::min(parameters.omega_het,betabin_overdisp);

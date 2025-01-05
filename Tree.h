@@ -139,6 +139,8 @@ class Tree{
             }
         }
 
+        //for export
+        TreeDefinition get_definition() const;
 
         //for debugging
         Node* get_node(int i) { return nodes[i]; }

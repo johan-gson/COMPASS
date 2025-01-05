@@ -2,7 +2,7 @@
 #define DEF_STRUCTURES
 #include <vector>
 #include <map>
-
+#include <array>
 
 enum CellType {
     CT_U = 0, //unknown
@@ -116,5 +116,33 @@ struct Params{
     double min_exp_cn = 0.03; //used for double CN loss
     double small_node_penalty = 600; //penalty for nodes that have very few cells and do not represent branches (have more than one child)
 };
+
+//allele_changes describes the changes to allele 1 and 2. A CNLOH can thus be -1,1 or 1,-1, 
+//a biallelic loss -1,-1, etc. A gain is typically 1,0 or 0,1, whole genome doubling would in theory be 1,1.
+//variant_alleles describes for each variant the index in allele_changes representing the allele where the variant is.
+//variant_alleles typically stay fixed when flipping which allele is lost, that is changed in allele_changes.
+//for variants that are uncertain (i.e., when we don't know how they are correlated with the other variants within the segment),
+//the variant_alleles may be shuffled as part of an mcmc move.
+//Note that the alleles are not comparable across CNAs, allele 1 in one may physically be allele 2 in another CNA, we just don't know this.
+struct CNADesc {
+    CNADesc() {}
+    CNADesc(std::array<int, 2> allele_changes_) {
+        allele_changes = allele_changes_;
+    }
+    std::array<int, 2> allele_changes{ 0, 0 };
+};
+
+struct NodeDefinition {
+    std::vector<std::size_t> variants; //indices to the variants in data. 
+    std::map<std::size_t, CNADesc> CNAs; //only contains the CNAs that are changed
+};
+
+struct TreeDefinition {
+    std::vector<NodeDefinition> nodes;
+    std::vector<std::size_t> parents;
+    std::vector<std::size_t> segment_variant_alleles;//This is a vector over all variants
+};
+
+
 
 #endif

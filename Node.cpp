@@ -612,3 +612,57 @@ void Node::move_germline_mutations_and_cnvs(Node* pNewRoot) {
     }
     pNewRoot->CNA_events.clear();
 }
+
+NodeDefinition Node::get_node_definition() const {
+    NodeDefinition n;
+
+    for (std::size_t i = 0; i < mutations.size(); ++i) {
+        n.variants.push_back(std::size_t(mutations[i])); //convert int to size_t
+    }
+
+    //we need to convert the CNAs to the physics format
+    for (auto& CNA : CNA_events) {
+        CNADesc CNAd;
+        auto var_alleles = std::get<2>(CNA);
+        //for (std::size_t i = 0; i < var_alleles.size(); ++i) {
+        //    CNAd.variant_alleles.push_back(std::size_t(var_alleles[i]));
+        //}
+
+        std::size_t ind = std::size_t(std::get<0>(CNA)); //key in the map
+        //now deal with the type of event
+        int type = std::size_t(std::get<1>(CNA)); //key in the map
+        switch (type) {
+        case -2:
+            //biallelic loss
+            CNAd.allele_changes = { -1,-1 };
+            break;
+        case -1:
+            //loss
+            CNAd.allele_changes = { 0, -1 };
+            break;
+        case 0:
+            //CNLOH
+            CNAd.allele_changes = { 1, -1 };
+            break;
+        case 1:
+            //CNLOH
+            CNAd.allele_changes = { 0, 1 };
+            break;
+        }
+        //we follow the following standard: if the first variant is 1, the loss is on the second allele in the new structure
+        //also if there are no variants in the region
+        //so, we flip the allele_changes if the first variant is 0, since the standard above is that everything happens on the second allele
+        //this is important if the same region is changed at different places in the tree, and on different alleles
+        //so, the second allele is the alt allele, the first the ref allele
+        if ((!var_alleles.empty()) && (var_alleles[0] == 0)) {
+            auto tmp = CNAd.allele_changes[0];
+            CNAd.allele_changes[0] = CNAd.allele_changes[1];
+            CNAd.allele_changes[1] = tmp;
+        }
+
+        n.CNAs[ind] = CNAd;
+    }
+
+    return n;
+}
+
