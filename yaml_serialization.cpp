@@ -7,6 +7,13 @@
 #include <sstream>
 
 
+void test_yaml() {
+    fkyaml::node node = fkyaml::node::sequence();
+    //fkyaml::node node = fkyaml::node::mapping();
+    std::string yaml_str = fkyaml::node::serialize(node);
+    int iii = 13;
+}
+
 // overloads must be defined in the same namespace as user-defined types.
 void from_node(const fkyaml::node& node, TreeDefinition& tree) {
     //assume the tree definition is empty
@@ -41,7 +48,6 @@ void from_node(const fkyaml::node& node, TreeDefinition& tree) {
         tree.segment_variant_alleles.push_back(std::size_t(v));
     }
 }
-
 
 void to_node(fkyaml::node& node, const TreeDefinition& tree) {
     node = fkyaml::node{ {"nodes", fkyaml::node::sequence()},{"parents", fkyaml::node::sequence()},{"segment_variant_alleles", fkyaml::node::sequence()} };
@@ -104,99 +110,6 @@ TreeDefinition read_yaml(std::string filename, const Data& data) {
 }
 
 
-/*
-
-// Serialization and deserialization helpers
-void serializeCNADesc(fkyaml::node & yaml, const CNADesc& cna) {
-    yaml["allele_changes"] = fkyaml::array(cna.allele_changes.begin(), cna.allele_changes.end());
-    yaml["variant_alleles"] = fkyaml::array(cna.variant_alleles.begin(), cna.variant_alleles.end());
-}
-
-CNADesc deserializeCNADesc(const fk::Yaml& yaml) {
-    CNADesc cna;
-    cna.allele_changes = {
-        yaml["allele_changes"][0].as<int>(),
-        yaml["allele_changes"][1].as<int>()
-    };
-    for (const auto& val : yaml["variant_alleles"]) {
-        cna.variant_alleles.push_back(val.as<std::size_t>());
-    }
-    return cna;
-}
-
-void serializeNodeDefinition(fk::Yaml& yaml, const NodeDefinition& node) {
-    yaml["variants"] = fk::Yaml::array(node.variants.begin(), node.variants.end());
-
-    fk::Yaml cnaMap;
-    for (const auto& [key, value] : node.CNAs) {
-        fk::Yaml cnaYaml;
-        serializeCNADesc(cnaYaml, value);
-        cnaMap[std::to_string(key)] = cnaYaml;
-    }
-    yaml["CNAs"] = cnaMap;
-}
-
-NodeDefinition deserializeNodeDefinition(const fk::Yaml& yaml) {
-    NodeDefinition node;
-
-    for (const auto& val : yaml["variants"]) {
-        node.variants.push_back(val.as<std::size_t>());
-    }
-
-    for (const auto& [key, value] : yaml["CNAs"]) {
-        std::size_t cnaKey = std::stoul(key);
-        node.CNAs[cnaKey] = deserializeCNADesc(value);
-    }
-
-    return node;
-}
-
-void serializeTreeDefinition(fk::Yaml& yaml, const TreeDefinition& tree) {
-    fk::Yaml nodesYaml;
-    for (const auto& node : tree.nodes) {
-        fk::Yaml nodeYaml;
-        serializeNodeDefinition(nodeYaml, node);
-        nodesYaml.push_back(nodeYaml);
-    }
-
-    yaml["nodes"] = nodesYaml;
-    yaml["parents"] = fk::Yaml::array(tree.parents.begin(), tree.parents.end());
-}
-
-TreeDefinition deserializeTreeDefinition(const fk::Yaml& yaml) {
-    TreeDefinition tree;
-
-    for (const auto& nodeYaml : yaml["nodes"]) {
-        tree.nodes.push_back(deserializeNodeDefinition(nodeYaml));
-    }
-
-    for (const auto& val : yaml["parents"]) {
-        tree.parents.push_back(val.as<std::size_t>());
-    }
-
-    return tree;
-}
-
-// Read TreeDefinition from a YAML file
-TreeDefinition readTreeFromYAML(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open file: " + filename);
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    file.close();
-
-    fk::Yaml root = fk::Yaml::parse(buffer.str());
-    return deserializeTreeDefinition(root);
-}
-
-// Write TreeDefinition to a YAML file
-void writeTreeToYAML(const TreeDefinition& tree, const std::string& filename) {
-}
-
-*/
 
 
 

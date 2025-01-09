@@ -293,6 +293,7 @@ std::vector<std::vector<double>> savedScoresPerCellAndLoci;//temp debug
 
 int main(int argc, char* argv[])
 {
+    test_yaml();
     init_params();
     parameters.verbose = false;
     // Read command line arguments

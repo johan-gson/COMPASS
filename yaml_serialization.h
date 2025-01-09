@@ -9,6 +9,6 @@
 
 TreeDefinition read_yaml(std::string filename, const Data& data);
 void write_yaml(std::string filename, TreeDefinition tree, const Data& data);
-
+void test_yaml();
  
 #endif
