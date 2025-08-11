@@ -3,6 +3,7 @@
 #include <vector>
 #include <map>
 #include <array>
+#include <cstdint>
 
 enum CellType {
     CT_U = 0, //unknown
