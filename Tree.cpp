@@ -84,6 +84,7 @@ Tree::Tree(Scores* cache, bool use_CNA, bool noRandomization, std::string start_
                     break;
                 }
             }
+
         }
         compute_nodes_genotypes();
 
@@ -1630,6 +1631,10 @@ void Tree::move_SNV(){
             }
         }
     }
+    if (nodes_with_event.size() == 0) {
+        hastings_ratio = 0.0;
+        return;
+    }
     int initial_nb_nodes_with_events = nodes_with_event.size();
     int new_nb_nodes_with_events = initial_nb_nodes_with_events;
     int source_node = nodes_with_event[std::rand() % nodes_with_event.size()];
@@ -1790,9 +1795,16 @@ void Tree::add_remove_CNA(bool use_CNA){
     for (int i=0;i<n_nodes;i++){
         if (nodes[i]->get_number_CNA()>0) nodes_with_events.push_back(i);
     }
-    if (nodes_with_events.size() == 0) {
+    
+    //The second case below is for the case where we have a tree with no mutations. In such a case, it is 
+    //possible to remove the last node except for the root - and if we get there, there is no way to add nodes
+    //back. So, we check that if we only have two nodes, if the non-root node (with index 1) doesn't have any
+    //mutations and only has one CNA, we don't remove it, because if we do, the node becomes empty, and will 
+    //be removed.
+    if ((nodes_with_events.size() == 0) ||
+        (n_nodes == 2 && nodes[1]->get_mutations().size() == 0 && nodes[1]->get_number_CNA() <= 1)) {
         add_probability = 1.0; //cannot remove a CNA event if none exists
-        //if it is not possible to add or remove CMV without messing up the root, we do nothing.
+        //if it is not possible to add or remove CNV without messing up the root, we do nothing.
         if (n_nodes <= 1) {
             hastings_ratio = 0.0;
             return;

@@ -47,8 +47,22 @@ Inference::~Inference(){
 
 Tree Inference::find_best_tree(bool use_CNA, int nb_steps, int burn_in){
     //First, find the best tree without CNA.
+    std::size_t num_somatic = 0;
+    for (int i = 0; i < n_loci; i++) {
+        switch (data.locus_to_variant_type[i]) {
+        case VariantType::VT_UNKNOWN:
+            ++num_somatic;
+            break;
+        case VariantType::VT_GERMLINE:
+            break;
+        case VariantType::VT_SOMATIC:
+            ++num_somatic;
+            break;
+        }
+    }
 
-    if (!(inited_from_file && use_CNA)) {
+
+    if ((!(inited_from_file && use_CNA)) && (num_somatic > 0)) {
         if (index >= 0) std::cout << "Chain " << std::to_string(index) << ": Starting first phase (finding the best tree without CNA)." << std::endl;
         else std::cout << "Starting first phase (finding the best tree without CNA)." << std::endl;
         mcmc(false, nb_steps, burn_in);
@@ -58,15 +72,23 @@ Tree Inference::find_best_tree(bool use_CNA, int nb_steps, int burn_in){
         }
     }
     else {
-        std::cout << "Started from saved tree - will go directly to second phase" << std::endl;
+        std::cout << "Started from saved tree or has no muations - will go directly to second phase" << std::endl;
     }
+
     best_tree.select_regions(index); 
     if (!best_tree.contains_candidate_regions()){
         //If cannot find candidate regions which might contain a CNV (or if not cells are attached to the root), return now
         if (tree_name!="") best_tree.to_dot(tree_name+".gv",false);
         return best_tree;
     }
-    
+
+    if (best_tree.get_num_nodes() == 1) {
+        //this can happen if we have no mutations
+        //add a node with a random CNA
+        best_tree.add_node(0);
+        best_tree.add_remove_CNA(true);//will always add, nothing to remove
+    }
+
 
     if (tree_name!="") best_tree.to_dot(tree_name+"noCNV.gv",false);
     // Find best tree with CNA
